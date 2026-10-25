@@ -1556,3 +1556,14 @@ Every track is PROPOSED until Joshua listens (preview: `pangaea/audio/stage_musi
   stay the composers' own. Three WAV downloads are re-encoded to Ogg Vorbis q5 to keep the repo small
   (logged in their records).
 - Bible 20's "music grows with scale and keeps its motifs" still waits for a composed theme.
+
+## 2026-10-25 · Creature and Aquatic stage sound effects (PROPOSED; IMPLEMENTED, not yet hooked)
+
+Original effects rendered from code like the cell's: `game/scenes/audio/stage_synth.gd` holds 31 recipes
+(creature `cr_`: steps by foot type paw, hoof, claw and webbed; bite, hurt, die, eating fruit and meat, sing,
+befriend, snub, mate, part pickup, earn, refuse; Aquatic `aq_`: burst, pressure warning and clear, the lancer's
+investigate, pursue and give-up, the drifter's warning, bite, hurt, die, eat, signal and its answer, mate, found,
+refuse) and `make_cell_audio.gd` renders them with three new ambience loops (`amb_meadow`, `amb_open_water`,
+`amb_fin_swim`). `CreatureAudio` and `AquaticAudio` (both `StageAudio`) map their sims' events to cues, set the
+soundtrack's stage and danger mood and open the editor music. The stages still have to add the node and call
+`on_event`, `step`, `set_motion` and `burst` (their threads own that code). PROPOSED until Joshua listens.

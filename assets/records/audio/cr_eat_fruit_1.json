@@ -1,0 +1,22 @@
+{
+  "id": "cr_eat_fruit_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/cr_eat_fruit_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "cr_eat_fruit",
+  "variant": 1,
+  "purpose": "Your creature eats fruit: a crisp crunch and a juicy squish.",
+  "visual_equivalent": "The fruit disappears and the points flash",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.45,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"cr_eat_fruit\", 0)"
+}

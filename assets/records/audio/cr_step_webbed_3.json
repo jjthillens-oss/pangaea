@@ -1,0 +1,22 @@
+{
+  "id": "cr_step_webbed_3",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/cr_step_webbed_3.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "cr_step_webbed",
+  "variant": 3,
+  "purpose": "A webbed foot steps: a wet slap. Positional.",
+  "visual_equivalent": "The webbed foot spreads as it plants",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.32,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"cr_step_webbed\", 2)"
+}

@@ -1,13 +1,14 @@
 extends SceneTree
-## Renders the cell stage's sound effects and ambience into assets/audio/ and writes a record for
-## each file in assets/records/audio/. The sound design lives in code: the effects in
-## game/scenes/audio/audio_synth.gd, the ambience below. Nothing is recorded or sampled, so every
+## Renders the sound effects and ambience of the cell stage, the creature stage and the Aquatic stage
+## into assets/audio/ and writes a record for each file in assets/records/audio/. The sound design
+## lives in code: the cell's effects in game/scenes/audio/audio_synth.gd, the other stages' effects
+## in game/scenes/audio/stage_synth.gd, the ambience below. Nothing is recorded or sampled, so every
 ## sound is original. The music (assets/audio/music/, composed CC0 instrumentals) and the UI
 ## sounds (assets/audio/ui/, Kenney's CC0 packs) are third-party files with their own records;
 ## this script leaves them alone.
 ##
 ## Usage: godot --headless --path . --script res://tools/audio/make_cell_audio.gd [-- --only=a,b]
-##   --only takes file ids (eat_plant_1, amb_reef) or groups (sfx, ambience, buses).
+##   --only takes file ids (eat_plant_1, amb_reef, cr_bite) or groups (sfx, stage, ambience, buses).
 ## Then run `godot --headless --path . --import` so the new files are imported. Loops get a
 ## .import file with a forward loop; keep it when a file is regenerated.
 ##
@@ -18,13 +19,16 @@ const AMB_DIR := "res://assets/audio/ambience"
 const RECORDS_DIR := "res://assets/records/audio"
 const GENERATOR := "tools/audio/make_cell_audio.gd"
 const SYNTH := "game/scenes/audio/audio_synth.gd"
+const STAGE_SYNTH := "game/scenes/audio/stage_synth.gd"
 const REVIEW := "production rev 1 - M1, awaiting owner listen"
+const STAGE_REVIEW := "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen"
 
 ## The ambience is softer and darker than the effects, so a lower rate keeps it small.
 const BED_RATE := 22050
 ## Target loudness of each file as RMS in dBFS; the mix sets the rest (CellAudio and the buses).
 const RMS_DB := {
 	"amb_bed": -25.0, "amb_sunlit": -31.0, "amb_reef": -30.0, "amb_drift": -31.0, "amb_swim": -24.0,
+	"amb_meadow": -28.0, "amb_open_water": -26.0, "amb_fin_swim": -24.0,
 }
 
 const BUS_LAYOUT := "res://default_bus_layout.tres"
@@ -62,6 +66,9 @@ const AMB_INFO := {
 	"amb_reef": ["Shell reefs: crackles and clicks of busy microbes, small knocks and far chirps.", 29.0],
 	"amb_drift": ["Open drift: sparse large bubbles and the slow moans of far giants.", 37.0],
 	"amb_swim": ["The cell's own swimming: a flagellum whir and a bubble trail, faded in with speed.", 4.0],
+	"amb_meadow": ["The creature stage's field: wind in the grass, far birdsong and crickets.", 32.0],
+	"amb_open_water": ["The Aquatic stage's open sea: a slow surge, far whale-like calls and drifting bubbles.", 36.0],
+	"amb_fin_swim": ["A fish's own swimming in the Aquatic stage: water rushing past with each tail beat, faded in with speed.", 4.0],
 }
 
 
@@ -79,6 +86,7 @@ func _init() -> void:
 	if _wanted("buses", "buses"):
 		_make_buses()
 	_make_sfx()
+	_make_stage_sfx()
 	_make_ambience()
 	print("make_cell_audio: wrote %d files in %.1f s" % [_written, (Time.get_ticks_msec() - t0) / 1000.0])
 	quit(0)
@@ -155,6 +163,25 @@ func _make_sfx() -> void:
 			})
 
 
+## The creature and Aquatic stages' effects (StageSynth), the same way.
+func _make_stage_sfx() -> void:
+	for id: String in StageSynth.SFX:
+		var info: Dictionary = StageSynth.SFX[id]
+		for v in int(info.variants):
+			var file_id := "%s_%d" % [id, v + 1]
+			if not (_wanted(file_id, "stage") or _wanted(id, "stage")):
+				continue
+			var samples := StageSynth.render(id, v)
+			var path := "%s/%s.wav" % [SFX_DIR, file_id]
+			_write_wav(path, [samples], AudioSynth.SFX_RATE, false)
+			_write_record(file_id, "sfx", path, {
+				"cue": id, "variant": v + 1, "purpose": info.purpose, "visual_equivalent": info.visual,
+				"bus": "SFX", "loop": false, "sample_rate": AudioSynth.SFX_RATE, "channels": 1,
+				"length_s": snappedf(samples.size() / float(AudioSynth.SFX_RATE), 0.001),
+				"recipe": "%s StageSynth._stage_sfx(\"%s\", %d)" % [STAGE_SYNTH, id, v], "synth_library": STAGE_SYNTH,
+			})
+
+
 # --- Ambience --------------------------------------------------------------------------------
 
 func _make_ambience() -> void:
@@ -170,6 +197,9 @@ func _make_ambience() -> void:
 			"amb_reef": lr = _reef(s, length_s)
 			"amb_drift": lr = _drift(s, length_s)
 			"amb_swim": lr = _swim(s, length_s)
+			"amb_meadow": lr = _meadow(s, length_s)
+			"amb_open_water": lr = _open_water(s, length_s)
+			"amb_fin_swim": lr = _fin_swim(s, length_s)
 		lr = _to_rms(s, lr, float(RMS_DB[id]))
 		var path := "%s/%s.wav" % [AMB_DIR, id]
 		_write_wav(path, lr, BED_RATE, true)
@@ -324,6 +354,85 @@ func _swim(s: AudioSynth, length_s: float) -> Array:
 	return lr
 
 
+## Wind in the grass, far birdsong (short trills) and crickets in pulsed groups.
+func _meadow(s: AudioSynth, length_s: float) -> Array:
+	var lr := []
+	for ch in 2:
+		var wind := _looped_noise(s, length_s, 2.0, func(l: float) -> PackedFloat32Array: return _brown(s, l, 700.0))
+		var grass := _looped_noise(s, length_s, 2.0, func(l: float) -> PackedFloat32Array: return s.svf(s.white(l), 3200.0, 3200.0, 0.7))
+		var gust := _swell(s, length_s, 0.3, [1, 2, 5])
+		var rustle := _swell(s, length_s, 0.15, [3, 4, 7])
+		var out := s.silence(length_s)
+		for i in out.size():
+			out[i] = wind[i] * gust[i] + 0.25 * grass[i] * rustle[i]
+		lr.append(out)
+	# Far birds: a trill of quick chirps, each a little falling sweep.
+	var at := 1.5
+	while at < length_s:
+		var pan := s.rng.randf_range(-0.9, 0.9)
+		var f := s.rng.randf_range(2600.0, 3800.0)
+		for k in s.rng.randi_range(3, 7):
+			var chirp := s.shaped(s.sweep(0.07, f, f * 0.8, 0.15), 0.004, 0.025)
+			_place(s, lr, s.lowpass(chirp, 5000.0), at + k * 0.09, 0.12, pan)
+			f *= s.rng.randf_range(0.97, 1.05)
+		at += s.rng.randf_range(2.5, 6.0)
+	# Crickets: a few pulses at 4.6 kHz in groups, soft and wide.
+	at = 0.4
+	while at < length_s:
+		var pan := s.rng.randf_range(-1.0, 1.0)
+		for k in 4:
+			var pulse := s.shaped(s.sweep(0.02, 4600.0, 4600.0), 0.002, 0.008)
+			_place(s, lr, pulse, at + k * 0.03, 0.05, pan)
+		at += s.rng.randf_range(0.5, 1.1)
+	return lr
+
+
+## The open sea: a slow surge, far whale-like calls and a few drifting bubbles.
+func _open_water(s: AudioSynth, length_s: float) -> Array:
+	var lr := []
+	for ch in 2:
+		var surge := _looped_noise(s, length_s, 2.0, func(l: float) -> PackedFloat32Array: return _brown(s, l, 320.0))
+		var hiss := _looped_noise(s, length_s, 2.0, func(l: float) -> PackedFloat32Array: return s.svf(s.white(l), 900.0, 900.0, 0.7))
+		var swell_a := _swell(s, length_s, 0.35, [1, 2, 3])
+		var swell_b := _swell(s, length_s, 0.1, [2, 5, 6])
+		var out := s.silence(length_s)
+		for i in out.size():
+			out[i] = surge[i] * swell_a[i] + 0.15 * hiss[i] * swell_b[i]
+		lr.append(out)
+	var at := 3.0
+	while at < length_s:
+		var len := s.rng.randf_range(2.5, 4.0)
+		var f0 := s.rng.randf_range(110.0, 180.0)
+		var call := s.voiced(s.buzz(len, f0, f0 * s.rng.randf_range(1.3, 1.8), 10, 1.4, 0.02), 400.0, 700.0, 900.0, 1300.0, 4.0)
+		call = s.lowpass(call, 900.0)
+		for i in call.size():
+			call[i] *= sin(PI * float(i) / call.size())
+		var pan := s.rng.randf_range(-0.7, 0.7)
+		_place(s, lr, call, at, 0.3, pan)
+		_place(s, lr, s.lowpass(call, 400.0), at + 0.5, 0.15, -pan)
+		at += s.rng.randf_range(9.0, 14.0)
+	for k in int(length_s * 1.5):
+		var f := exp(s.rng.randf_range(log(400.0), log(1400.0)))
+		_place(s, lr, s.lowpass(s.bubble(f), 2000.0), s.rng.randf() * length_s, s.rng.randf_range(0.1, 0.35), s.rng.randf_range(-0.9, 0.9))
+	return lr
+
+
+## A fish swimming: water rushing past, swelling with each tail beat (2 a second), and a few bubbles.
+func _fin_swim(s: AudioSynth, length_s: float) -> Array:
+	var lr := []
+	for ch in 2:
+		var rush := _looped_noise(s, length_s, 0.5, func(l: float) -> PackedFloat32Array: return s.svf(s.white(l), 480.0, 480.0, 1.1))
+		var n := rush.size()
+		for i in n:
+			var t := float(i) / n
+			rush[i] *= 0.4 + 0.6 * pow(0.5 + 0.5 * sin(TAU * 8.0 * t + ch * 0.4), 2.0)
+		lr.append(rush)
+	for k in int(length_s * 3.0):
+		var f := exp(s.rng.randf_range(log(700.0), log(2400.0)))
+		_place(s, lr, s.bubble(f), s.rng.randf() * length_s, s.rng.randf_range(0.05, 0.15), s.rng.randf_range(-0.5, 0.5))
+	return lr
+
+
 # --- Output ----------------------------------------------------------------------------------
 
 ## Scales a stereo pair to an RMS in dBFS, then softly limits any peak above -1 dBFS.
@@ -386,7 +495,7 @@ func _write_loop_import(path: String) -> void:
 
 func _write_record(id: String, kind: String, path: String, fields: Dictionary) -> void:
 	var record := {
-		"id": id, "owner": "Joshua Jake", "status": "PROPOSED", "review_state": REVIEW, "category": kind,
+		"id": id, "owner": "Joshua Jake", "status": "PROPOSED", "review_state": STAGE_REVIEW if id.begins_with("cr_") or id.begins_with("aq_") or id in ["amb_meadow", "amb_open_water", "amb_fin_swim"] else REVIEW, "category": kind,
 		"export_path": path.trim_prefix("res://"), "generator_script": GENERATOR, "synth_library": SYNTH,
 		"license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
 		"third_party_sources": [],

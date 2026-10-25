@@ -1,0 +1,22 @@
+{
+  "id": "cr_eat_meat_2",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/cr_eat_meat_2.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "cr_eat_meat",
+  "variant": 2,
+  "purpose": "Your creature eats meat: two heavy chomps.",
+  "visual_equivalent": "The meat chunk disappears and the points flash",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.55,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"cr_eat_meat\", 1)"
+}

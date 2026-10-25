@@ -1,0 +1,22 @@
+{
+  "id": "aq_lancer_pursue_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/aq_lancer_pursue_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "aq_lancer_pursue",
+  "variant": 1,
+  "purpose": "The lancer gives chase: a rising rush and a growl. Positional.",
+  "visual_equivalent": "The lancer's charge and the danger marker",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 1.2,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"aq_lancer_pursue\", 0)"
+}

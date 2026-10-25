@@ -1,0 +1,22 @@
+{
+  "id": "aq_die_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/aq_die_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "aq_die",
+  "variant": 1,
+  "purpose": "Your fish dies: a sinking groan and a fizz of bubbles.",
+  "visual_equivalent": "The death notice",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 2.6,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"aq_die\", 0)"
+}

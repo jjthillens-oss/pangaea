@@ -1,0 +1,19 @@
+{
+  "id": "amb_open_water",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "ambience",
+  "export_path": "assets/audio/ambience/amb_open_water.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "purpose": "The Aquatic stage's open sea: a slow surge, far whale-like calls and drifting bubbles.",
+  "bus": "Ambience",
+  "loop": true,
+  "sample_rate": 22050,
+  "channels": 2,
+  "length_s": 36.0,
+  "recipe": "tools/audio/make_cell_audio.gd _open_water"
+}
