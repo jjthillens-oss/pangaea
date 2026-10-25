@@ -15,7 +15,7 @@ a cpart_ record with a role, then regenerate part_rules.json with tools/make_par
 | --- | --- |
 | `tools/blender/make_more_creature_parts.py` | Builds the 20 parts. It imports the helpers of `tools/blender/make_creature_parts.py` and never edits that file; the helpers defined there twice (`_smooth`, `_pad_material`, `_fur_material`) are copied here with an `_mp` prefix. Run: `python3 tools/blender/make_more_creature_parts.py [--only cpart_<id>[,...]]`, then `godot --headless --path . --import` and `python3 tools/make_part_rules.py`. |
 | `tools/blender/render_more_parts_gates.py` | Gate 1-3 renders of one exported GLB: gray front, side, back, three-quarter and top views and one per handle under a neutral white rig with a grazing light; material three-quarter, side and close-up under the same rig; the art look under `lookdev.review_lighting`; and a labelled contact sheet. Run: `python3 tools/blender/render_more_parts_gates.py cpart_<id> <out_dir>`. |
-| `tools/godot/more_parts_shots.gd` | Gate 4 frames in the real creature editor: `--mode=palette` saves one frame per palette tab; `--mode=creatures` opens presets (or a `--showcase` JSON of presets plus parts, with an optional `swap` of part types done in memory only) and saves, with the HUD and handles hidden, the world camera's distance and pitch from behind (`_game`) and the front (`_front`), a head close-up (`_close`) and a level head profile (`_side`). |
+| `tools/godot/more_parts_shots.gd` | Gate 4 frames in the real creature editor: `--mode=palette` saves one frame per palette tab; `--mode=creatures` opens presets (or a `--showcase` JSON of presets plus parts, with an optional `swap` of part types done in memory only) and saves, with the HUD and handles hidden, the world camera's distance and pitch from behind (`_game`) and the front (`_front`), a head close-up (`_close`) and a level head profile (`_side`). A showcase entry's optional `focus_type` aims the close-up and profile at the placed part of that type nearest the front right (a foot) instead of the head. |
 
 The handle views set each `H<n>_` key on every mesh of the part at once, as the runtime does (a part such as the
 hooked beak keeps its lower mandible in a child mesh with the same key names). Gate notes live in the generator's
@@ -93,6 +93,10 @@ observation behind it). The same notes are in each record's `review_notes`.
 | mouth_fangs | pass: wide low lipped snout resting a little open; face-on a lens of a mouth with two long fangs in front of the chin, curving back, and a forked tongue between the lips | pass: teal domed snake scales (slightly larger, paler plates along the mouth line, faint in the gap's shade), ivory fangs, dark plum mouth and tongue | pass: scale domes catch soft highlights, fangs bright without clipping | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 909 / 1200 |
 | eye_turret | pass: smooth slightly convex cone 8.4 cm across, round aperture at the tip with the ball just inside; blink puckers it shut, reach stretches it | pass: turquoise granular tubercles in concentric ring bands; a gold iris ring round a black pupil inside the aperture | pass: ring bands read by grazing light, gold ring visible in the shadowed aperture | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 668 / 1200 |
 | eye_lashed | pass: big ball set in the skin, seen through an almond opening in one smooth lid ring (heavy rolled upper lid, thin lower lid); seven bold flat lashes reach forward off the upper margin and flick up | pass: glossy white sclera, chestnut iris with fibres and a big black pupil, soft warm lid skin, near-black glossy lashes | pass: highlight on the iris, lid roll reads, lashes dark without crushing | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 987 / 1200 |
+| foot_otter | pass: broad furred palm, five short plump toes fanned from -70 to +70 degrees, a web nearly to the tips with its free edge scalloped back between the toes, dark pads under the palm and each toe tip, short pale claws; both handles deform without tearing | pass: brown short-furred skin, a darker smoother web membrane, near-black glossy pads, ivory claws | pass: web reads as a darker membrane between lit toes, pads dark without crushing | pending (frames below) | 1507 / 2500 |
+| foot_pillar | pass: wide round column flaring to a thick padded sole with a rounded rim, toe swellings under five broad half-moon toenails resting on the rim, a rounded shoulder closing inside the limb | pass: matt grey creased skin over a fine cracked grid, a dark rubbery sole band, ivory nails with growth lines | pass: grazing light shows the creases and toe swellings; the sole band is a clean line | pending (frames below) | 1698 / 2500 |
+| antler_branched | pass: ridged beam from a furred pedicle through a knobbly burr, sweeping up and back and turning forward, brow, bez and trez tines forward and a crown tine forking inward, so it branches from every side | pass: antler bone with gutters, pearled base and pale cream tips (moderate: tips about 1.4 x the mid-beam in mat_side), brown furred pedicle | pass: gutters and burr knobs read by grazing light, no clipping on the tips | pending (frames below) | 1070 / 2500 |
+| antler_palmate | pass: short beam out into a broad flat palm cupped forward, fringed with eight flat blunt points with low ribs into them, brow tine forward; broad from front and back, a thin plate from the side | pass: tan antler bone with gutters, pearled burr, pale cream points, brown furred pedicle | pass: palm face shows gutters and ribs without clipping | pending (frames below) | 1698 / 2500 |
 
 Gate 4 (beaks and trunks): `tools/godot/more_parts_shots.gd --mode=creatures --showcase=<json>` with each new
 mouth swapped in memory for a preset's mouth (tortoise beak to beak_hooked, strider beak to beak_long, longneck beak
@@ -131,6 +135,27 @@ tighter 0.3 mm tolerance); the first lashed eye wrapped two thin lid shells roun
 eggshell with spidery lashes and was 1588 triangles, and the second still creased where its two lids met and curled
 its lashes back over the lid like claws (it is now one lid ring round an almond opening, sunk into the skin behind,
 with bold lashes that reach forward and flick up).
+
+Iterations for the feet and antlers. Before the first real build, each draft went through a scratch-only geometry
+preview: the builder ran with the bake stubbed out, the faces were flat-shaded with PIL, and the script lived outside
+Git. That caught:
+- the otter foot's first toes, too fat for their spacing, hiding the web;
+- `cp._foot_handles` tearing the otter's outer toes at full H1_Spread. Its spread switches on at the line y = 0.02
+  with no blend, so foot_otter has its own eased handles: a fan about the palm's centre and a lengthening along each
+  toe;
+- the pillar's first nails, round coins halfway up the column;
+- the first deer antler, a thin straight stick with stubby tines that all pointed forward, so it read as a stick from
+  the front and back;
+- the first moose palm, a balloon on a thin neck with thorn-like spikes, then a star of creases where the point
+  lobes reached the palm's centre.
+
+The gate sheets then caught three more (Gate 1 or 2 needs revision, then fixed):
+- the pillar's skin-to-sole material border, decimated into a sawtooth of dark triangles. The sole is now its own
+  closed mesh tucked inside the column;
+- the antler bone, which read as turned wood at first: an even tan with grain streaks;
+- the second antler bone, whose pale tips did not show because the beam's shade was already near white. The beam
+  now sits well below the tint, and a per-vertex `Tip` weight (baked into the albedo, then removed) carries each
+  point's tip up to cream.
 
 ## Issues
 
