@@ -17,6 +17,10 @@ const LIGHT_NODES: Array[StringName] = [&"Shaft", &"Reach"]
 const AUTHORED_REACH_M := 4.0
 const PULSE_HZ := 0.5
 const PULSE_SHARE := 0.25
+## M_ShoreLight's gains are the light's look in Forward+. Compatibility tonemaps each additive layer before it blends
+## (docs/TOOLCHAIN.md), so the dim shaft and the bright ring drift apart there: the view scales them by this (x the
+## shaft, y the ring), as ZoneLights.strength_for() does for its patches. Measured with tools/godot/shore_shots.gd.
+const RENDERER_GAIN_COMPATIBILITY := Vector2(1.0, 1.0)
 
 var _model: Node3D
 ## This view's own copy of M_ShoreLight: pulse() sets its strength, never the shared file's.
@@ -32,12 +36,19 @@ func _init() -> void:
 	for n: Node in _model.find_children("*", "GeometryInstance3D", true, false):
 		(n as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_light = (load(LIGHT_MATERIAL) as ShaderMaterial).duplicate() as ShaderMaterial
+	_light.set_shader_parameter(&"renderer_gain", renderer_gain_for(RenderingServer.get_current_rendering_method()))
 	for part in LIGHT_NODES:
 		(_model.find_child(String(part), true, false) as GeometryInstance3D).material_override = _light
 	var reach := _model.find_child("Reach", true, false) as Node3D
 	var k := ShoreLink.REACH_TM / AUTHORED_REACH_M
 	reach.scale = Vector3(k, 1.0, k)
 	add_child(_model)
+
+
+## The light's gains for a renderer (x the shaft, y the ring), by its RenderingServer.get_current_rendering_method()
+## name.
+static func renderer_gain_for(method: String) -> Vector2:
+	return RENDERER_GAIN_COMPATIBILITY if method == PoolLook.COMPATIBILITY_METHOD else Vector2.ONE
 
 
 ## The piece's meshes, for the pool's shader warm-up under the start fade (endless mode only).

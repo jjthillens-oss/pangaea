@@ -20,14 +20,15 @@ Three nodes, the pivot on the shore point on the swim plane (Blender z = 0), fro
 Shaft and Reach are engine-drawn: their material M_ShoreLight maps (in the .glb.import, with
 --import) to assets/export/M_ShoreLight.tres, an additive, unshaded, fog-free shader. COLOR_0 (the
 LightWeight attribute, stored as raw values) tells the parts apart: red is the part's strength,
-green 0 for the shaft (fade at both ends and toward its silhouette) and 1 for the ring (a soft band
-across v).
+green 0 for the shaft (brightest on the sand, fading upward and toward its silhouette) and 1 for the
+ring (a soft band across v). glTF flips v; the shader flips it back.
 
 Run (with the bpy module, or blender --background --python):
   python tools/blender/make_shore_piece.py              build, bake, write the .blend, GLB, record and M_ShoreLight.tres
   python tools/blender/make_shore_piece.py --rough      geometry and procedural shader only, saved to --out (no repo writes)
   python tools/blender/make_shore_piece.py --root=DIR   as the default, but every output goes under DIR instead of the repo
   python tools/blender/make_shore_piece.py --import     after `godot --headless --import`: map M_ShoreLight in the .glb.import
+  python tools/blender/make_shore_piece.py --light      rewrite only M_ShoreLight.tres (light tuning; no bake, no export)
 """
 import argparse
 import math
@@ -69,6 +70,17 @@ SKIRT_BOTTOM_M = -20.0
 SHAFT_WEIGHT = 0.45        # LightWeight red: the shaft draws dimmer than the ring
 RING_WEIGHT = 1.0
 LIGHT_TINT = "#FFD486"     # warm sunlight through shallow water: LAB h 82.9, 31.5 degrees from the food green
+# M_ShoreLight's look in Forward+ (the shipped renderer). ShoreView scales the two gains for Compatibility, which
+# tonemaps each additive layer before it blends (docs/TOOLCHAIN.md), so dim and bright layers drift apart there.
+SHAFT_GAIN = 0.5           # the shaft's strength (times LightWeight red)
+RING_GAIN = 0.5            # the ring's strength (times LightWeight red)
+SHAFT_FADE = 0.1           # the shaft fades from this share of its height (from the sand) to its top
+SHAFT_EDGE = 2.0           # the shaft fades toward its silhouette as facing^SHAFT_EDGE
+NEAR_TOP = 0.4             # the wall toward the camera is gone above this share of the shaft's height (it would
+                           # light the cell standing in the shaft); the far wall carries the column
+# The pool's sun and ambient light the sand at about 1.9 times its albedo on screen (Gate 4, docs/art/shore_piece.md):
+# the baked albedo is scaled once so the shelf reads L* 36 to 48 behind the cell, under the coral cell.
+ALBEDO_GAIN = 0.27
 
 # --- The landing's shape (Blender metres) -------------------------------------------------------------------
 CENTRE = (0.25, 0.9)       # the shelf's centre, a little north of the pivot (the crest lies north)
@@ -574,6 +586,7 @@ def sand_shader():
 
     base = sh.mix(is_grain, sand, grain)
     base = sh.mix(is_glass, base, glass)
+    base = sh.mix(1.0, base, (ALBEDO_GAIN, ALBEDO_GAIN, ALBEDO_GAIN, 1.0), "MULTIPLY")   # the pool's exposure
 
     rough_sand = sh.remap(dry, 0.0, 1.0, 0.6, 0.9)
     rough = sh.math("ADD", sh.math("MULTIPLY", sh.math("SUBTRACT", 1.0, sh.math("MAXIMUM", is_grain, is_glass)), rough_sand),
@@ -673,22 +686,44 @@ SHORE_LIGHT_TRES = """[gd_resource type="ShaderMaterial" load_steps=2 format=3]
 [sub_resource type="Shader" id="Shader_shore_light"]
 code = "// The shore's light (shore_piece: the Shaft and the Reach ring), additive and unlit, no fog.
 // Written by tools/blender/make_shore_piece.py. COLOR_0 (LightWeight, raw) tells the parts apart:
-// red is the part's strength, green 0 for the shaft (it fades at both ends and toward its silhouette)
-// and 1 for the ring (a soft band across UV v, which runs 0 inside to 1 outside). The view pulses a
-// duplicate's strength, never this file.
+// red is the part's strength, green 0 for the shaft and 1 for the ring. glTF flips UV v, so v below
+// runs as authored in Blender: up the shaft from the sand (0) to its top (1), across the ring from
+// inside (0) to outside (1). The shaft is brightest where it stands on the sand and fades upward and
+// toward its silhouette; the ring is a soft band. The gains are the Forward+ look; the view scales them
+// for Compatibility (renderer_gain: x shaft, y ring) and pulses a duplicate's strength, never this file.
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
 
 uniform vec4 tint : source_color = vec4({r}, {g}, {b}, 1.0);
+uniform float shaft_gain = {shaft_gain};
+uniform float ring_gain = {ring_gain};
+uniform float shaft_fade = {shaft_fade};
+uniform float shaft_edge = {shaft_edge};
+uniform float near_top = {near_top};
+uniform vec2 renderer_gain = vec2(1.0, 1.0);
 uniform float strength = 1.0;
 
+varying float near_side;
+
+void vertex() {{
+	// 1 on the shaft's side toward the camera, 0 on the far side: the near wall stands between the
+	// camera and whatever is in the light, so above the sand it fades by near_top (v) and the far
+	// wall carries the column.
+	vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
+	vec2 out_dir = VERTEX.xz;
+	near_side = length(out_dir) > 0.0001 && length(eye.xz) > 0.0001
+		? smoothstep(-0.2, 0.4, dot(normalize(out_dir), normalize(eye.xz))) : 0.0;
+}}
+
 void fragment() {{
-	float ends = smoothstep(0.0, 0.35, UV.y) * (1.0 - smoothstep(0.45, 1.0, UV.y));
+	float v = 1.0 - UV.y;
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
-	float shaft = ends * pow(facing, 2.0);
-	float band = 1.0 - smoothstep(0.0, 1.0, abs(UV.y * 2.0 - 1.0));
-	float shape = mix(shaft, band, COLOR.g);
-	ALBEDO = tint.rgb * (0.5 * strength * COLOR.r * shape);
+	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
+	float near_cut = mix(1.0, 1.0 - smoothstep(near_top * 0.5, near_top, v), near_side);
+	float shaft = smoothstep(0.0, 0.05, v) * rise * near_cut * pow(facing, shaft_edge);
+	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
+	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
+	ALBEDO = tint.rgb * (strength * COLOR.r * mix(shaft * g.x, band * g.y, COLOR.g));
 }}
 "
 
@@ -697,6 +732,12 @@ resource_name = "M_ShoreLight"
 render_priority = 0
 shader = SubResource("Shader_shore_light")
 shader_parameter/tint = Color({r}, {g}, {b}, 1)
+shader_parameter/shaft_gain = {shaft_gain}
+shader_parameter/ring_gain = {ring_gain}
+shader_parameter/shaft_fade = {shaft_fade}
+shader_parameter/shaft_edge = {shaft_edge}
+shader_parameter/near_top = {near_top}
+shader_parameter/renderer_gain = Vector2(1, 1)
 shader_parameter/strength = 1.0
 """
 
@@ -706,7 +747,8 @@ def write_light_material():
     path = os.path.join(bc.ROOT, "assets", "export", "M_ShoreLight.tres")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
-        f.write(SHORE_LIGHT_TRES.format(r=r, g=g, b=b))
+        f.write(SHORE_LIGHT_TRES.format(r=r, g=g, b=b, shaft_gain=SHAFT_GAIN, ring_gain=RING_GAIN, shaft_fade=SHAFT_FADE,
+                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP))
     print("wrote", path)
 
 
@@ -736,11 +778,15 @@ def main():
     parser.add_argument("--out", default=ROUGH_OUT, help="the rough .blend path")
     parser.add_argument("--root", default="", help="write the outputs under this folder instead of the repository")
     parser.add_argument("--import", dest="map_import", action="store_true", help="map M_ShoreLight in the .glb.import")
+    parser.add_argument("--light", action="store_true", help="rewrite only M_ShoreLight.tres (light tuning, no bake)")
     args = parser.parse_args(argv)
     if args.root:
         bc.ROOT = os.path.abspath(args.root)
     if args.map_import:
         map_light_material()
+        return
+    if args.light:
+        write_light_material()
         return
     bc.reset_scene()
     bank, stats = build()

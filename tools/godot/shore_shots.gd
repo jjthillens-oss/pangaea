@@ -128,9 +128,9 @@ func _initialize() -> void:
 		print("readings %s %s" % [shot.name, JSON.stringify(readings)])
 		var sim := main.pool.sim
 		var at := sim.absolute_position_am()
-		notes.append("%s at (%.1f, %.1f) am, %.2f tm from the shore, zoom %.1f, notice %s, message '%s', toast %s" % [
+		notes.append("%s at (%.1f, %.1f) am, %.2f tm from the shore, zoom %.1f, light pulse %.2f, notice %s, message '%s', toast %s" % [
 			shot.name, at[0], at[1], ShoreLink.distance_am(sim.save, at) / _k, main.pool.camera.distance,
-			main.shore_notice != null, main.hud.message_text.text, main.hud.toast_texts()])
+			main.pool.shore.light_strength(), main.shore_notice != null, main.hud.message_text.text, main.hud.toast_texts()])
 	print("notes ", JSON.stringify(notes))
 	quit(1 if failed > 0 else 0)
 
