@@ -1253,7 +1253,7 @@
 		},
 		"muzzle_primate": {
 			"type": "muzzle_primate",
-			"footprint_radius_m": 0.057,
+			"footprint_radius_m": 0.055,
 			"sink_depth_m": 0.008,
 			"chiral": false,
 			"orientation": "forward_cone",
