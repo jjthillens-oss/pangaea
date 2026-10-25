@@ -1,7 +1,10 @@
 # GENESIS Bible addendum: the aquatic path
 
-**Status: PROPOSED. Not binding until the owner approves it and `docs/DECISIONS.md` records the approval.**
-This addendum extends GENESIS Master Developer Bible v0.1 so that a lineage may stay in the water through every
+**Status: CONFIRMED direction (owner, 2026-10-25); the content in sections B to I is PROPOSED design until built.**
+Joshua approved the full aquatic path on 2026-10-25 05:42 UTC ("We need a 100% add this because it's exactly what
+the community wanted"), recorded in `docs/DECISIONS.md`. This addendum is now part of the Bible: a lineage may stay
+in the water through every era. Era names, numbers, module sets and milestone placements below stay PROPOSED until
+playtested and recorded. This addendum extends GENESIS Master Developer Bible v0.1 so that a lineage may stay in the water through every
 era. It changes no CONFIRMED requirement, no era count or order, and no milestone before M5. It is the "bounded
 content plan" that Bible §4 requires before an alternative path is built. Where this addendum and the Bible
 disagree, the Bible wins until the owner says otherwise.
@@ -138,6 +141,9 @@ cut the content (research finding 6). It is a risk reduction, not a feature.
 | Realism arguments stall design | Debate about metallurgy in reviews | Owner-confirmed tone position in section A |
 
 ## J. Decisions for the owner (adds to §26)
+
+Decision 1 is taken: the full aquatic path is approved (2026-10-25). Decisions 2 to 5 are open; until they are
+answered, the recommendation in section K is the working assumption.
 
 1. **Approve the aquatic path as a supported route** to the Interstellar era (this addendum), or limit it to era 4
    with an explained gate before Tribal (backlog decision D2 option B), or keep the current plan where era 3 onward

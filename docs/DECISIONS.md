@@ -142,6 +142,19 @@ Compatibility renderer: the values above are tuned for Forward+, the Windows bui
 Evidence, both renderers at 1920×1080 and gameplay zoom, four shots (grazer, hunter, starving, rim; renders in `screenshots/m1-step2-look/`): the two renderers' floor medians are 6.2 to 7.5 CIE76 apart (grazer: Compatibility `#2F7C80`, Forward+ `#398F96`); floor saturation is at most 0.46 in both; plankton cores stay yellow-green (hue 110 to 119 in Compatibility, 115 to 123 in Forward+); the 97th-percentile L* is at most 72 in Compatibility and 81 in Forward+ (the rim shot was 94 in Forward+ and 100 in Compatibility). Near-white plankton pixels (L* 92 or more, chroma under 15) are 10 to 15% in Compatibility (27 to 36% with the Forward+ values, under 1% in Forward+). Against the `m1-swim-eat` shots in the same renderer, the luminance contrast of the cell, plankton and carrion against the floor is higher in every shot, and so is their colour difference, except the cell's at the rim (Compatibility 27 → 21, Forward+ 27 → 10) and the fed cell's in Forward+ (30 to 31 → 28).
 Impact: the mint sample cell is now close in hue to the water and reads by value and by its shadow, most weakly over the shallows near the rim; the art direction's coral default membrane (`#E9744F`) would restore a hue difference. Compatibility frames stay a little darker and greener than Forward+, with paler plankton tops and stronger caustics in the shallows by the rim, so the look is still judged in Forward+ (`docs/TOOLCHAIN.md` has the recipe for Forward+ renders in the container).
 
+## 2026-10-25 · The aquatic path is a supported route to the Interstellar era (CONFIRMED)
+Joshua approved the full aquatic path on 2026-10-25 05:42 UTC, after the research decision card: "We need a 100% add
+this because it's exactly what the community wanted." A sea lineage may stay in the water through every era, with
+reef tribes, connected reef cities and water-filled ships. The bounded content plan that Bible §4 requires is
+`docs/bible/addendum-aquatic-path.md`, which now forms part of the Bible; its demand record is
+`docs/research/aquatic-path-wishes.md`. Reason: the most-requested missing content since Spore's 2005 demo, and
+Bible §4 already says never force a land build. Impact: aquatic variants attach to M5 to M8, and a small reef spike
+(M4.5) precedes M5 to prove 3D settlement navigation; no change to era count or order, the save schema, the art
+pipeline or M0 to M4. Every variant, module set and number in the addendum is PROPOSED until built and recorded.
+Open for Joshua (addendum section J): the tone position, the M4.5 spike placement, the tideline rule, and the seven
+era-5 module names; section K's recommendation is the working assumption. The Bible moves to v0.2 at its next
+revision.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
