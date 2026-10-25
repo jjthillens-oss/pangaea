@@ -46,7 +46,11 @@ the UI.
 "Nothing to redo" while disabled. `game/ui/editor_ease/shortcut_text.gd` names a binding with its modifiers (Cmd on
 macOS when the project remaps Ctrl to Cmd) and controller buttons through `InputPrompts.names_for`. The tooltips are
 rebuilt when `InputPrompts.generation` changes. The cell editor's bottom row also has a key line, "Ctrl+Z undo ·
-Ctrl+Shift+Z redo · Escape back", for the device in use.
+Ctrl+Shift+Z redo · Escape back", for the device in use. Every tooltip in both editors opens in the game's glass,
+not Godot's default look: `game/ui/editor_ease/tooltip_theme.gd` is a small Theme holding only `TooltipPanel` (the
+`GlassPanel` stylebox at the card's opacity) and `TooltipLabel`'s colour, set on the cell editor's root and on the
+creature HUD's palette, stats and bottom panels. The font size comes from `game/ui/theme/pangaea_theme.tres`, so
+tooltips follow the text-size setting; that theme is not edited.
 
 **Creature editor's other keys (PROPOSED, #207).** `CreatureEditor._key()` matches keycodes directly (M, Delete,
 Insert, T, Enter, and so on), so the HUD cannot name them from bindings. Until #207 lands, the Delete, Insert,
@@ -65,7 +69,8 @@ words, not only in the toggle's look). With it on:
   the two sides;
 - a twin that does not fit leaves a single part, and the status line says "No room for its pair: <reason>".
 
-The twin is not stored. It is found at each action by `game/ui/editor_ease/cell_symmetry.gd` (`twin_of`): the part
+The twin is not stored. It is found at each action (for a drag, once when the drag starts) by
+`game/ui/editor_ease/cell_symmetry.gd` (`twin_of`): the part
 of the same type, scale and level at the mirrored angle, within `MIRROR_EPS`; ties go to the lower id. A part counts
 as central by the same rule `EditorSession.mirror_part()` uses (`|sin(angle)| < CENTRE_SIN`). With Symmetry off,
 every action behaves as before this pass (`tests/test_cell_editor.gd` passes unchanged). Off is the default because
@@ -91,16 +96,23 @@ faint middle line; when snapped, a solid line with a diamond at the spot, or for
 chord. With Symmetry on, a dashed mirror axis and a dashed ring on the selected part's twin are drawn. The states
 differ in shape, not only in colour. A hint line under the dish reads "Drag a dot round the rim to move its part" at
 rest, then "Snapped to the middle line", "Snapped opposite the other <Type>" or "A mirrored pair keeps off the middle
-line". Snapping does not avoid a spot another part already holds, as before.
+line". A target within a dot's width of another part (`RimView.clear_angle()`, two dot radii at the rim's current
+size; `CLEAR_RAD`, 0.1 rad, before layout) is taken and skipped: the mouth at the front and the tail at the back
+usually hold the middle line, so the drag stays at the pointer and the hint reads "Another part holds that spot, so
+it does not snap there". A click on dots that overlap picks the selected one, or else the one drawn on top. With
+Symmetry on, the dragged part's twin is fixed when the drag starts: dragging a single part past the mirror spot of
+another part of its kind does not take that part along; the two count as a pair from the release on.
 
-**Creature tools (IMPLEMENTED; the spot itself PROPOSED, #203).** When a tool is chosen, a pill above the dock says
+**Creature tools (IMPLEMENTED; the spot itself PROPOSED, #203).** When a tool is chosen, a pill under the title says
 where its part goes and how a click snaps, built by `game/ui/editor_ease/placement_hint.gd` from the part's rule
 (`hosts`, `centerline` in `game/data/creature/part_rules.json`) and the editor's own numbers:
 `EditorPicking.MIDDLE_SNAP` (shown as 9°) and `EditorPicking.LIMB_END_FROM_U` (shown as "the last 10%"). For example:
-"Eye · Click the head or body: within 9° of the middle line it snaps on as one; further out you get a mirrored pair.
-It can also sit on another part". The limb tool has its own line. The pill wraps and narrows so it stays between the
-palette and the stats panel, and hides with no tool and during the test drive. The card repeats it. The editor
-works out the actual spot only on the click, so a marker at the spot before the click needs #203.
+"Eye · Click the head or body: within 9° of the middle line it snaps on as one; further out you get a mirrored
+pair". The limb tool has its own line. The pill sits over the sky and the creature's back, not over the feet and limb
+tips that foot, hand and claw tools are clicked on, and leaves out "It can also sit on another part", which the card
+keeps. It wraps and narrows so it stays between the palette and the stats panel, and hides with no tool and during
+the test drive. The editor works out the actual spot only on the click, so a marker at the spot before the click
+needs #203.
 
 ## Part cards
 
@@ -167,6 +179,8 @@ row wraps, and the points line can wrap. The dim layer and the test pool keep th
 | --- | --- | --- | --- |
 | Cell Symmetry default | off | `game/ui/cell_editor.gd` (`symmetry`) | Off keeps today's single adds |
 | `SNAP_RAD` | 0.07 rad (about 4°) | `game/ui/editor_ease/cell_symmetry.gd` | How near a rim drag must come to the middle line or a mirrored spot to snap |
+| `CLEAR_RAD` | 0.1 rad | `game/ui/editor_ease/cell_symmetry.gd` | A snap target this near another part is taken (the rim uses two dot radii at its drawn size once laid out) |
+| Stats table least text size | 19 px | `game/ui/editor_ease/stats_panel.gd` (`MIN_FONT_SIZE`) | The old stats text's size; larger text settings go above it |
 | `PAIR_EDGE` | 0.06 rad | `game/ui/editor_ease/cell_symmetry.gd` | How far a mirrored pair keeps off the middle line |
 | `CENTRE_SIN` | 0.05 | `game/ui/editor_ease/cell_symmetry.gd` | A part whose angle's sine is below this (in size) is on the middle line (`EditorSession.mirror_part()`'s rule) |
 | `MIRROR_EPS` | 0.02 rad | `game/ui/editor_ease/cell_symmetry.gd` | How near the mirrored angle a twin must be |
@@ -199,21 +213,24 @@ asks tell the editor to do the same.
   fixes this.
 - The creature editor's Mass line uses 1000 kg/m³ and `CreatureStats.of` uses the stage tuning's 900 kg/m³, so the
   stat help avoids quoting a mass threshold (#208).
-- Undo and Redo keep the engine's theme tooltip, not the part card.
+- Button tooltips (Undo, Redo, the dock, Symmetry, Upgrade both) are the engine's tooltip in the glass style, placed
+  by the engine near the pointer. In the cell editor the Undo tip, near the screen's bottom edge, can cover Mate
+  while the pointer rests on Undo.
 - A part card is a hover overlay: it closes when the pointer leaves the tile. While it is open it covers what lies
   beside the palette. In the creature editor at 1920x1080 that is the rear half of the creature (the space between
   the palette and the stats panel holds the creature, and the 380 px card does not fit beside it); a stat's help
   card covers part of the head. In the cell editor it covers the dish's left edge. At 130% text the cards are
   taller and also reach the dock or the buttons under the dish.
-- The creature placement line stays open while a tool is chosen. At 130% text it wraps to four lines and covers the
-  creature's feet (it is 97% opaque so its text stays readable over the legs). At 100% it sits below the feet.
+- The creature placement line stays open while a tool is chosen, under the title pill. It is 97% opaque, so it
+  hides what lies behind it; a very tall creature's top can reach it.
+- The creature Symmetry toggle is not visible in the game yet: it shows once #204 connects the editor to it.
 - The new strings are not translatable yet (no `tr()` until #172 merges).
 
 ## Evidence
 
 Rendered with `tools/godot/editor_ease_shots.gd` under xvfb with the compatibility renderer (see `docs/TOOLCHAIN.md`).
 The BEFORE frames come from main (2ffc1218) before this pass; the AFTER frames from this branch after merging main
-ad64c950. Each pair shows the same pose. All are in `docs/evidence/credit-editor-ease/`.
+4b0ef032 and the review round 1 fixes. Each pair shows the same pose. All are in `docs/evidence/credit-editor-ease/`.
 
 | Pose | Before | After |
 | --- | --- | --- |
@@ -226,8 +243,8 @@ ad64c950. Each pair shows the same pose. All are in `docs/evidence/credit-editor
 | An eye spot and its mirror | `docs/evidence/credit-editor-ease/before_cell_pair.jpg` | `docs/evidence/credit-editor-ease/after_cell_pair.jpg` |
 | A part dragged near the front of the rim | `docs/evidence/credit-editor-ease/before_cell_drag_snap.jpg` | `docs/evidence/credit-editor-ease/after_cell_drag_snap.jpg` |
 
-AFTER only: `after_creature_stat_help.jpg`, `after_creature_undo_tip.jpg`, `after_cell_stat_help.jpg`,
-`after_cell_undo_tip.jpg` and `after_cell_pair_drag.jpg`; the layout checks at 130% text (`*_text130.jpg`) and at
+AFTER only: `after_creature_stat_help.jpg`, `after_creature_undo_tip.jpg`, `after_creature_tool_foot.jpg`,
+`after_cell_stat_help.jpg`, `after_cell_undo_tip.jpg` and `after_cell_pair_drag.jpg`; the layout checks at 130% text (`*_text130.jpg`) and at
 1280x720 (`*_1280x720.jpg`). Native tooltips (Undo, Redo) are captured because the script hovers with a real pointer.
 
 ## Files
@@ -236,7 +253,7 @@ AFTER only: `after_creature_stat_help.jpg`, `after_creature_undo_tip.jpg`, `afte
   `game/ui/editor_ease/cell_symmetry.gd`, `game/ui/editor_ease/cell_effects.gd`, `game/ui/editor_ease/part_card.gd`,
   `game/ui/editor_ease/creature_hud_ease.gd`, `game/ui/editor_ease/stats_rows.gd`,
   `game/ui/editor_ease/stats_panel.gd`, `game/ui/editor_ease/creature_effects.gd`,
-  `game/ui/editor_ease/placement_hint.gd`.
+  `game/ui/editor_ease/placement_hint.gd`, `game/ui/editor_ease/tooltip_theme.gd`.
 - `game/ui/cell_editor.gd`: Symmetry, snapping, the card, the stats panel, the theme.
 - `game/ui/creature_editor_hud.gd`: hooks only (the `EditorEase` preload and node, one-line forwards in `wire()`,
   `setup()`, `set_tool()`, `set_stats()` and `set_undo_redo()`, `tool_button()`, `signal symmetry_toggled` and
