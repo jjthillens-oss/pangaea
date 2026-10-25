@@ -78,7 +78,13 @@ const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": K
 ## does not repeat it (C-15). The window is per region.
 const REGION_TOAST_REPEAT_S := 30.0
 const REGION_NAMES := {"home": "Home waters", "sunlit": "Sunlit shallows", "reef": "Shell reef",
-		"drift": "Open drift", "giant_husk": "The giant husk", "shell_cathedral": "The shell cathedral"}
+		"drift": "Open drift", "giant_husk": "The giant husk", "shell_cathedral": "The shell cathedral",
+		# S3 (D-116): band 1's regions and rare places.
+		"veil_garden": "Veil gardens", "warden_flat": "Warden flats", "glass_reef": "Glass reef",
+		"sunbeam_well": "Sunbeam well", "fallen_lattice": "Fallen lattice", "sponge_grove": "Sponge grove",
+		"shed_shell": "Shed shell"}
+## Home from band 1 (D-116, V3-15): the cradle's name, toasted once a session.
+const CRADLE_TOAST := "Your lineage began here"
 ## The idea hints read the pool's context this often (s2-view 7.5).
 const IDEA_CONTEXT_S := 0.25
 ## The grow warning sound plays when the ring starts growing, at most once per this long (sim s).
@@ -102,6 +108,8 @@ var _banner_t := 0.0
 var _toasts: Array[Dictionary] = []   ## {"node": Control, "age": float}
 var _vignette_t := INF                ## seconds since the last vignette pulse
 var _region_shown := {}               ## region or rare kind -> sim time its toast last showed
+var _cradle_toasted := false          ## the cradle's toast has shown since bind (V3-15)
+var _held_region: Array = []          ## [region, rare] entered during a beat before its chord
 var _growth_state := "none"           ## GrowthHud state shown last frame
 var _grow_warn_at := -INF             ## sim time the grow warning last played
 ## The endless sea's marker overlay; null in the pool.
@@ -121,6 +129,7 @@ var _idea_ctx := {}
 @onready var meter_ring: MeterRing = %MeterRing
 @onready var size_badge: Label = %SizeBadge
 @onready var growth_line: Label = %GrowthLine
+@onready var places_line: Label = %PlacesLine
 @onready var shelter_chip: PanelContainer = %ShelterChip
 @onready var shelter_text: Label = %ShelterText
 @onready var health_row: Control = %HealthRow
@@ -180,6 +189,8 @@ func bind(p_pool: PoolScene) -> void:
 	_set_vignette(0.0)
 	threat_indicators.bind(pool)
 	_region_shown.clear()
+	_cradle_toasted = false
+	_held_region = []
 	_growth_state = "none"
 	_grow_warn_at = -INF
 	idea_hints = IdeaHints.new()
@@ -227,6 +238,11 @@ func refresh() -> void:
 	_set_text(health_text, health_line(state))
 	_set_text(lineage_text, BodyText.lineage_line(_body, GameSession.lineage_tag(sim.save.lineage_id), sim.save.genome.generation))
 	_set_text(points_text, points_line(sim.save.adaptation_points))
+	var growth := pool.growth()
+	places_line.visible = growth != null
+	if growth != null:
+		var places: Vector2i = growth.places_found(pool.shown_size())
+		set_places(places.x, places.y)
 	starving_banner.visible = state.is_starving() and not sim.dead
 	_update_bars()
 
@@ -242,11 +258,26 @@ func show_message(text: String, seconds: float = MESSAGE_S) -> void:
 
 ## The growth beat's chord (S2, 1.9 s in): the new size's message ("Size 2 · about 32 µm"); the
 ## badge and the ring follow pool.shown_size(), which turns to the new size at the same moment.
+## Then the region entered during the beat (V3-15); at a band-up with none, the tile the cell is in
+## under its new band's name, since a cell that keeps its tile coordinates (home's, at the origin)
+## gets no tile_entered and would never hear that home is now the cradle.
 func on_growth_chord(size: int) -> void:
 	show_message(GrowthHud.badge_text(size, pool.session.world.config.ladder.get("labels", [])))
 	update_growth()
 	ladder_strip.refresh()
 	refresh()
+	if not _held_region.is_empty():
+		var held := _held_region
+		_held_region = []
+		_on_region(held[0], held[1])
+	elif pool.is_endless() and WorldConfig.band_of(size) > WorldConfig.band_of(size - 1):
+		var here := start_tile_info(pool.sim)
+		_on_region(str(here.get("region", "")), str(here.get("rare", "")))
+
+
+## The places line (S3, D-133): "Places found at this size: 3 of 10".
+func set_places(found: int, total: int) -> void:
+	_set_text(places_line, GrowthHud.places_text(found, total))
 
 
 ## A refusal hint at the bottom of the screen.
@@ -341,8 +372,10 @@ static func find_toast(points: int, reason: String) -> String:
 
 
 ## The toast for entering a tile: its rare kind's name when `rare` is not "", else its region's;
-## "" for a name the HUD does not know.
-static func region_toast(region: String, rare: String) -> String:
+## "" for a name the HUD does not know. Home from band `band` 1 is the cradle (V3-15).
+static func region_toast(region: String, rare: String, band := 0) -> String:
+	if rare == "" and region == WorldGen.HOME and band >= 1:
+		return CRADLE_TOAST
 	return str(REGION_NAMES.get(rare if rare != "" else region, ""))
 
 
@@ -602,10 +635,21 @@ func _on_sim_event(event: Dictionary) -> void:
 
 
 ## Toasts the region (or rare tile) the cell is in, unless its toast showed less than
-## REGION_TOAST_REPEAT_S ago.
+## REGION_TOAST_REPEAT_S ago; the cradle's only once a session. During a growth beat before its chord
+## the last region entered is held and toasted at the chord (V3-15: the band-up's tick changes
+## every tile, so it would toast on frame 0).
 func _on_region(region: String, rare: String) -> void:
-	var text := region_toast(region, rare)
+	var beat := pool.growth_beat
+	if beat != null and beat.active() and beat.t() < GrowthBeat.CHORD_S:
+		_held_region = [region, rare]
+		return
+	var text := region_toast(region, rare, WorldConfig.band_of(pool.sim_size()) if pool.is_endless() else 0)
 	if text == "":
+		return
+	if text == CRADLE_TOAST:
+		if not _cradle_toasted:
+			_cradle_toasted = true
+			_add_toast(text)
 		return
 	var key := rare if rare != "" else region
 	var now := pool.sim.now()

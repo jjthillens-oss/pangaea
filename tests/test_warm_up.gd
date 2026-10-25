@@ -80,3 +80,47 @@ func test_the_warm_up_point_is_in_view_inside_the_far_plane_and_behind_the_backd
 	check(too_far.is_empty(), "inside the far plane at %.0f m; beyond it at %s" % [camera.far, too_far])
 	check(too_shallow.is_empty(), "behind the Backdrop at %.0f m; above it at %s" % [backdrop_y, too_shallow])
 	camera.free()
+
+
+# --- S3 (S3G36 F part; s3-view 13, V3-16) ---
+
+const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
+
+
+func test_s3_assets_are_preloaded() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var paths := pool.s3_preload_paths()
+	var kit := pool.session.world.kit
+	var want := PackedStringArray()
+	for id: String in kit.assets:
+		var a: Dictionary = kit.assets[id]
+		var kind := str(a.get("kind", ""))
+		if (int(a.band) == 1 and kind in ["shell", "landmark", "rare"]) or (int(a.band) == 0 and kind in ["landmark", "rare"]):
+			want.append(str(a.glb))
+	want.append(PoolScene.CRADLE_RING_PATH)
+	want.append(PoolScene.HOME_BEACON_PATH)
+	check(want.size() >= 20, "the band-1 kit, band 0's landmarks and rares, the ring and the beacon (%d)" % want.size())
+	for path in want:
+		check(paths.has(path), "%s is preloaded" % path)
+	var sorted := paths.duplicate()
+	sorted.sort()
+	check_eq(paths, sorted, "sorted")
+	var m1 := FakeEvents.open_pool(FakeEvents.pool_session())
+	check(m1.s3_preload_paths().is_empty(), "nothing in the M1 pool")
+	m1.free()
+	pool.free()
+
+
+func test_s3_meshes_are_warmed() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	pool.preload_now()
+	check(pool.preload_done(), "the preload is done")
+	var warmed := pool.warmed_meshes()
+	for path in pool.s3_preload_paths():
+		var root := (load(path) as PackedScene).instantiate()
+		var meshes := root.find_children("*", "MeshInstance3D", true, false).map(func(n: Node) -> Mesh: return (n as MeshInstance3D).mesh)
+		root.free()
+		check(meshes.any(func(m: Mesh) -> bool: return warmed.has(m)), "a mesh of %s is warmed" % path.get_file())
+	for mesh in FoodView.warm_up_meshes() + CreatureLayer.warm_up_meshes():
+		check(warmed.has(mesh), "T4's warm-up mesh %s is warmed" % mesh)
+	pool.free()

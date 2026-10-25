@@ -26,6 +26,19 @@ const S2_RELATIONSHIPS := {"rules": {"prey_share": true, "intruder_share": true,
 const STARVATION_PATH_SHARE := 0.6
 
 
+## The shipped world file with sizes.max_in_build `top`, written under user:// (S3: the size-3 and
+## size-4 content checks run before I-3 flips the shipped top; BP3-17 loads only the bands a build
+## reaches). Returns its path.
+static func shipped_world_at(top: int) -> String:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
+	data.sizes.max_in_build = top
+	var path := "user://world_cell_top_%d.json" % top
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data, "\t"))
+	f.close()
+	return path
+
+
 ## The starving budget in tm: the shortest distance any starting body swims at starving speed before
 ## starvation kills it, times STARVATION_PATH_SHARE (16.3 today), computed as the pool's test does.
 static func starving_budget(catalog: PartCatalog) -> float:
@@ -268,21 +281,26 @@ static func orientation_problems(content: WorldContent, species: SpeciesCatalog,
 ## {worst: int, at: Vector2 (tile-local bu), home: bool, tile: Vector2i (p's tile when home is
 ## true)}; the gate is worst <= caps.food_items. The first point to reach the worst wins a tie, the
 ## arrangements away from the home first. At `size` (0: size_start) the zones are those there
-## (zones_at: drop gone, thin thinned) and the ring and step are that size's tm in bu (/ bu_to_tm).
+## (zones_at: drop gone, thin thinned) and the ring and step are that size's tm in bu (/ bu_to_tm);
+## only band_of(size)'s tiles take part, and at band 1 and up its cradle stands for the home block.
 static func food_bound(content: WorldContent, step_tm: float, size := 0) -> Dictionary:
 	if size <= 0:
 		size = content.config.size_start
 	var scale := WorldConfig.bu_to_tm(size)
 	var ring := float(content.config.rings.food) / scale
 	var step := step_tm / scale
+	var band := WorldConfig.band_of(size)
 	var frames: Array = []
 	for id in WorldConfig._sorted(content.tiles.tiles.keys()):
 		var t: Dictionary = content.tiles.tiles[id]
+		if int(t.band) != band:
+			continue
 		for o in ALL_ORIENTATIONS:
 			frames.append(_food_zones(zones_at(oriented_tile(t, o).zones, int(t.band), size, content), content))
 	var home_zones := _food_zones(zones_at(content.home.zones.map(func(z: Dictionary) -> Dictionary:
 		return {"center": PackedFloat64Array([z.x, z.y]), "radius": z.radius, "capacity": z.capacity,
-			"at_second_size": z.at_second_size}), content.home.band, size, content), content)
+			"at_second_size": z.at_second_size}), content.home.band, size, content), content) if band == 0 \
+		else _food_zones(zones_at(content.cradle_of(band).zones, band, size, content), content)
 	var n := roundi(TileCatalog.HALF_TILE_BU * 2.0 / step)
 	var best := {"worst": -1, "at": Vector2.ZERO, "tile": Vector2i.ZERO, "home": false}
 	var slot_max := {}
@@ -385,7 +403,9 @@ static func sample_sites(gen: WorldGen, band: int, size: int, center_abs_tm: Pac
 ## south-west corner, and with all eight orientations a quarter turn of the pair gives the other two
 ## corners); then every tile and orientation along each edge of the home block. At `size`, in its tm:
 ## the colliders there, each live site's discs with k (both posts and the union for two posts), the
-## radius there, and the offsets times bu_to_tm(size).
+## radius there, and the offsets times bu_to_tm(size). Only the tiles of band_of(size) take part, and
+## at band 1 and up the band's cradle stands where the home block does (S3G2); a morsel site there
+## has no disc (WorldGen emits it as food).
 static func seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
 		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
 	var out := tile_seam_problems(content, species, part_catalog, size, orientations)
@@ -407,11 +427,13 @@ static func tile_seam_problems(content: WorldContent, species: SpeciesCatalog, p
 	return out
 
 
-## seam_problems' home edges: each tile and orientation in the two tile slots along each edge.
+## seam_problems' home edges: each tile and orientation in the two tile slots along each edge (the
+## cradle's outer edges at band 1 and up).
 static func home_seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
 		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
 	var frames := _tile_frames(content, species, part_catalog, size, orientations)
-	var home := _home_frame(content, species, part_catalog, size)
+	var home := _home_frame(content, species, part_catalog, size) if WorldConfig.band_of(size) == 0 \
+		else _cradle_frame(content, species, part_catalog, size)
 	var lo := int(content.config.arrangement.home_tiles[0])
 	var hi := int(content.config.arrangement.home_tiles[1])
 	var slots: Array[Vector2i] = []
@@ -487,10 +509,12 @@ static func _tile_frames(content: WorldContent, species: SpeciesCatalog, part_ca
 	var out := []
 	for id in WorldConfig._sorted(content.tiles.tiles.keys()):
 		var t: Dictionary = content.tiles.tiles[id]
+		if int(t.band) != WorldConfig.band_of(size):
+			continue
 		var second := is_second_size(int(t.band), size)
 		var discs := []
 		for site in t.sites:
-			if not site.sizes.has(size) or not radii.has(site.species):
+			if TileCatalog.site_role(species, site, size) in ["", "morsel"] or not radii.has(site.species):
 				discs.append([])
 				continue
 			var post_b: Dictionary = site.get("post_b", {})
@@ -536,6 +560,27 @@ static func _home_frame(content: WorldContent, species: SpeciesCatalog, part_cat
 		for d in site_discs(species, site, Vector2(site.x, site.y), zone_by_id.get(site.territory_zone, {}), post_b,
 				zone_by_id.get(str(post_b.get("territory_zone", "")), {}), size):
 			frame.sites.append({"where": "site '%s'%s of %s" % [site.id, d.label, home.where], "r": float(radii[site.species]) * s,
+				"disc": {"center": Vector2(d.disc.center) * s, "radius": float(d.disc.radius) * s}})
+	return frame
+
+
+## The cradle of band_of(size) as one side of a seam, in its own frame (centre at abs (0, 0)), in tm
+## at `size`, as _home_frame gives the home block.
+static func _cradle_frame(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int) -> Dictionary:
+	var cradle := content.cradle_of(WorldConfig.band_of(size))
+	var block := cradle._block()
+	var s := WorldConfig.bu_to_tm(size)
+	var second := is_second_size(cradle.band, size)
+	var radii := TileCatalog.radii_at(species, part_catalog, size)
+	var circles := _named(scaled(TileCatalog.colliders_at(block, TileCatalog.colliders_of(block, content.kit), size), s), cradle.where)
+	var frame := {"where": cradle.where, "circles": circles, "max_r": _max_r(circles), "sites": []}
+	for site in cradle.sites:
+		if TileCatalog.site_role(species, site, size) in ["", "morsel"] or not radii.has(site.species):
+			continue
+		var post_b: Dictionary = site.post_b
+		for d in site_discs(species, site, TileCatalog._vec(site.home), _tile_zone(block, site.territory_zone, second), post_b,
+				_tile_zone(block, str(post_b.get("territory_zone", "")), second), size):
+			frame.sites.append({"where": "site '%s'%s of %s" % [site.id, d.label, cradle.where], "r": float(radii[site.species]) * s,
 				"disc": {"center": Vector2(d.disc.center) * s, "radius": float(d.disc.radius) * s}})
 	return frame
 

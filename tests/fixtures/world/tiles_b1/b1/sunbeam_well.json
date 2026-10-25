@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Sunbeam well (S3 band 1, rare): a ring of glass pillars under a shaft of light, off to one side of a Warden's meadow and an elder Warden's blooming pair (docs/s3: s3-sim 4.3).",
+  "id": "sunbeam_well",
+  "band": 1,
+  "region": "rare",
+  "set": null,
+  "rare": "sunbeam_well",
+  "landmark_anchor": null,
+  "set_piece": {"asset": "rare_sunbeam_well", "center": [-16.0, -16.0], "yaw_deg": 0.0},
+  "shells": [
+    {"id": "s0", "center": [-21.3, -3.8], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s1", "center": [-9.9, 4.8], "radius": 0.86, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s2", "center": [-1.5, -21.3], "radius": 0.71, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-27.1, 1.7], "radius": 0.81, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [21.9, 0.7], "radius": 1.37, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [-6.7, -6.0], "radius": 0.82, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s6", "center": [1.0, -2.3], "radius": 1.42, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [22.3, 10.8], "radius": 1.02, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s8", "center": [10.0, -14.7], "radius": 0.77, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s9", "center": [14.7, 22.9], "radius": 0.72, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s10", "center": [7.8, 13.4], "radius": 0.82, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s11", "center": [-25.6, 8.8], "radius": 0.77, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "ma", "center": [15.24, 15.24], "radius": 5.25, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "mb", "center": [5.76, 5.76], "radius": 5.25, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "zwell", "center": [-16.0, -6.5], "radius": 2.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "zw1", "center": [-13.0, 19.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.05, "at_second_size": "drop"},
+    {"id": "zr1", "center": [19.0, -13.0], "radius": 3.5, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "zv1", "center": [5.0, 23.0], "radius": 3.5, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f1", "center": [-25.8, 24.2], "radius": 3.74, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f2", "center": [-17.1, -27.1], "radius": 3.44, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f3", "center": [17.0, -27.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f4", "center": [26.7, 16.7], "radius": 3.2, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f5", "center": [-27.4, -7.4], "radius": 3.14, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f6", "center": [-10.5, -22.5], "radius": 3.03, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "ew", "species": "elder_warden", "home": [15.24, 15.24], "heading": -0.1343, "territory_zone": "ma", "sizes": [4], "post_b": {"home": [5.76, 5.76], "heading": -2.2481, "territory_zone": "mb"}},
+    {"id": "wa", "species": "warden", "home": [-13.0, 19.0], "heading": 1.5552, "territory_zone": "zw1", "sizes": [3]},
+    {"id": "va", "species": "veil", "home": [5.0, 23.0], "heading": 0.7297, "territory_zone": "", "sizes": [3]},
+    {"id": "ra", "species": "rammer", "home": [19.0, -13.0], "heading": 1.5222, "territory_zone": "zr1", "sizes": [3, 4]}
+  ]
+}

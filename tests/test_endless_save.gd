@@ -24,6 +24,18 @@ const S2_FIXTURE_POSITION := [830.5, -52.375]
 const S2_FIXTURE_CHECKPOINT := [812.25, -40.0625, 1.25, 2.0]
 const S2_FIXTURE_METER := 37.5
 const S2_FIXTURE_PAID := {"food": ["algae_ball"], "landmark": ["landmark_arch"], "place": []}
+## S3 T0.7's fixture (S3G33; s3-sim 4.6, D-142): a size-4 save at a landmark checkpoint as this
+## build's writer saves it (record_save_v3.gd --s3), its values as recorded.
+const WorldChecks := preload("res://tests/world_checks.gd")
+const S3_FIXTURE := "res://tests/fixtures/saves/save_v4_s3.json"
+const S3_FIXTURE_POSITION := [375.5, 30.25]
+const S3_FIXTURE_CHECKPOINT := [358.912, 23.04, 1.25, 4.0]
+const S3_FIXTURE_METER := 52.5
+const S3_FIXTURE_PAID := {"food": ["bead_cluster"], "landmark": ["landmark_b1_foram_spiral"], "place": []}
+## The ledger as recorded, [type, id, size] in find order: S2's five finds, then band 1's.
+const S3_FIXTURE_LEDGER := [["food", "plankton", 1], ["food", "carrion", 1], ["place", "giant_husk", 1],
+	["food", "algae_ball", 2], ["landmark", "landmark_arch", 2], ["food", "glass_flake", 3], ["place", "sunbeam_well", 3],
+	["food", "bead_cluster", 4], ["landmark", "landmark_b1_foram_spiral", 4]]
 ## T1's fixture world: the shipped settings with their content on the minimal fixtures, until T4's land.
 const WORLD := "res://tests/fixtures/world/world_min.json"
 ## G11: Continue lands within a micrometre of the pre-save position, on each axis.
@@ -135,11 +147,11 @@ func _growing_world(max_in_build: int = 2) -> String:
 	return path
 
 
-## Copies the S2 fixture (a v3 save at size 2, T4.4) into this test's slot.
-func _s2_fixture_in_slot() -> void:
+## Copies the S2 fixture (a v3 save at size 2, T4.4), or `path`, into this test's slot.
+func _s2_fixture_in_slot(path := S2_FIXTURE) -> void:
 	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
 	var file := FileAccess.open(slot, FileAccess.WRITE)
-	file.store_string(FileAccess.get_file_as_string(S2_FIXTURE))
+	file.store_string(FileAccess.get_file_as_string(path))
 	file.close()
 
 
@@ -372,6 +384,39 @@ func test_the_s2_fixture_continues_at_size_2_as_recorded() -> void:
 	if sim.arena.is_clear(sim.world.local_of_abs(S2_FIXTURE_POSITION[0], S2_FIXTURE_POSITION[1]), sim.phenotype.radius):
 		check(absf(dx) <= MICROMETRE and absf(dy) <= MICROMETRE, "the saved place is clear, so the cell is there: off by (%s, %s)" % [dx, dy])
 	check(not session.dirty, "nothing unsaved right after continuing")
+
+
+## S3G33 (S3 T0.7; s3-sim 4.6, D-142, D-74): the S3 fixture continues at size 4 on the shipped world
+## with its top at 4: the meter, the checkpoint at its landmark's clear point, the nine-line ledger
+## with each find's size, the paid lists of its size-4 finds and band 1's places found at 3; the cell
+## in open water by its saved place, nothing unsaved. A build whose top is 2 brings it back at 2.
+func test_the_s3_fixture_continues_at_size_4_with_its_checkpoint_and_ledger() -> void:
+	_s2_fixture_in_slot(S3_FIXTURE)
+	var session := _continue(WorldChecks.shipped_world_at(4))
+	if session == null:
+		return
+	var sim := session.sim
+	check_eq(sim.size(), 4, "at size 4")
+	check(absf(sim.growth.meter - S3_FIXTURE_METER) < 1e-9, "the meter %.3f" % sim.growth.meter)
+	check_eq(Array(sim.world.checkpoint_am), S3_FIXTURE_CHECKPOINT, "the checkpoint")
+	var ledger := []
+	for d: Dictionary in sim.growth.discoveries:
+		ledger.append([str(d.get("type", "")), str(d.get("id", "")), int(d.get("size", 0))])
+	check_eq(ledger, S3_FIXTURE_LEDGER, "the ledger, each find with its size")
+	check_eq(sim.growth.paid, S3_FIXTURE_PAID, "the paid lists from the ledger's size-4 finds")
+	check_eq(sim.growth.places_found(3).x, 1, "band 1's places found at size 3: the fixed rare place")
+	var at := sim.absolute_position_am()
+	var dx := at[0] - S3_FIXTURE_POSITION[0]
+	var dy := at[1] - S3_FIXTURE_POSITION[1]
+	check(dx * dx + dy * dy <= CLEAR_SEARCH_TM * CLEAR_SEARCH_TM, "within %.0f tm of the saved place: (%.9f, %.9f)"
+		% [CLEAR_SEARCH_TM, at[0], at[1]])
+	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "in open water")
+	check(not session.dirty, "nothing unsaved right after continuing")
+	_s2_fixture_in_slot(S3_FIXTURE)
+	var two := _continue(WorldChecks.shipped_world_at(2))
+	if two != null:
+		check_eq(two.sim.size(), 2, "a build whose top is 2: size 2")
+		check_eq(int(two.sim.world.checkpoint_am[3]), 2, "the checkpoint at size 2")
 
 
 func test_slow_ten_save_and_continue_cycles_do_not_drift() -> void:
