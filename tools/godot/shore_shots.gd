@@ -66,10 +66,10 @@ const SHOTS: Array[Dictionary] = [
 	{"name": "09_threats_on_bank", "do": "threats", "at": Vector2(0.0, 4.6), "zoom": 14.0, "what": "Size 4's threats on the shelf and the ramp round the cell: each body against the sand behind it"},
 ]
 ## 09's bodies: size 4's lineup threats (look_probe.gd S3_LINEUP[4]) at these offsets from the shore point (tm,
-## x east, y south), on the shelf (y about 0) and down the ramp (y 7 to 10). An offset with no room moves 1 tm east,
-## at most 3 times.
+## x east, y south), on the shelf (y about 0) and down the ramp (y 6.5 to 9.5), clear of the HUD's panels at zoom 14.
+## An offset with no room moves 1 tm east, at most 3 times.
 const THREATS := [["deep_lurker", Vector2(-4.5, 0.5)], ["elder_warden", Vector2(4.5, 0.5)], ["veil", Vector2(0.0, -1.5)],
-	["warden", Vector2(-4.5, 7.5)], ["lurker", Vector2(4.5, 7.5)], ["elder_rammer", Vector2(0.0, 9.5)]]
+	["warden", Vector2(-3.0, 6.5)], ["lurker", Vector2(4.5, 7.5)], ["elder_rammer", Vector2(0.0, 9.5)]]
 ## A body's core, as a share of its radius, for its reading (look_probe.gd BODY_CORE).
 const BODY_CORE := 0.5
 
