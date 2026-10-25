@@ -1553,3 +1553,19 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the adaptation that still matters is the shared point pool (the creature world has no diets, so
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
+
+## 2026-10-25 · Studio operating model v2: the director's office, approval tiers and budget (CONFIRMED)
+The owner approved the autonomous studio proposal (https://claude.ai/artifact/WJyS6LkaodmVRfmhBCbmwz) on
+2026-10-25 at 05:09 UTC ("Exactly. Let's do it this way. I approve."). Claude runs as creative and game director;
+the owner approves milestones. It amends the 2026-10-22 studio operating model entry.
+- **The director's office** (`docs/director/`): the handbook (non-negotiables, Spore pillars per stage, case law),
+  visual, design and feel rubrics that a reviewer other than the builder scores, the backlog of Bible M2 to M5 exit
+  evidence (`docs/director/backlog.json`), a progress log and the Bible §21 templates.
+- **Three approval tiers**: agents decide code, tuning and drop-in swaps; looks, feel, pacing and HUD go into a weekly
+  Sunday batch after merging; scope, era, save schema, pipeline, money, dependencies, Spore pillars, Bible departures,
+  the M2 benchmark and anything public always go to the owner.
+- **Budget**: 10% of weekly usage a day from Wednesday to Monday, solo work only; the owner keeps 5 to 10%;
+  Tuesday, the last day before the Wednesday 06:00 UTC reset, is ultracode day, from a fixed job list. At most 3
+  routine runs and 3 task briefs a day and 2 active builder threads. The $250 cloud credit is nearly spent.
+- **Routines**: daily plan 06:00, nightly build 09:17, playtest capture 11:00, weekly report Sunday 18:00 (UTC).
+Impact: no code, schema or scope change. Rubric thresholds and the backlog order are PROPOSED tuning.
