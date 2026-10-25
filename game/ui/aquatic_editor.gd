@@ -2,8 +2,9 @@ extends Control
 ## The Aquatic stage's fin and tail editor (aquatic plan section 6, PROPOSED), opened by mating at the nest. Spore's
 ## layout: the choices on the left (Tail, Fins, Body, Senses), the offspring turning on a plinth on the right, and
 ## the swim stats before and after with the points it costs. Every number comes from AquaticBody, the rules play
-## uses, so the preview cannot disagree with the water. Done commits the next generation; Cancel keeps the parent.
-## The mouth and colour are inherited and stay (shown, not offered).
+## uses, and the test swim (aquatic-r2: Spore's test drive, the Bible §12 test space) is AquaticSim.trial(), the
+## same sim swum on fixed courses, so the preview cannot disagree with the water. Done commits the next generation;
+## Cancel keeps the parent. The mouth and colour are inherited and stay (shown, not offered).
 
 signal closed(committed: bool, body: Dictionary, cost: int)
 
@@ -12,16 +13,86 @@ const PLINTH := "res://assets/export/creature_editor_room.glb"
 ## The tail choices' names (aquatic-r2). No tail is simply "fast" or "nimble": the stats below the fish show each one's
 ## tradeoff, from the same rules the water uses.
 const TAIL_NAMES := {"fluke": "Fluke", "ribbon": "Ribbon", "lunate": "Lunate", "paddle": "Paddle", "whip": "Whip"}
+## What each tail trades (aquatic-r2, PROPOSED wording; the numbers behind it are in docs/stages/aquatic-plan.md
+## section 4 and tests/test_aquatic_sim.gd checks the roles): the caption under the tail row and each button's tooltip.
+const TAIL_ROLES := {
+	"fluke": "Fluke, the all-rounder: good speed and a good dash at a middling cost, but it turns wide at full strength.",
+	"ribbon": "Ribbon: strong even when small and nimble at speed, but costly to swim.",
+	"lunate": "Lunate, the cruiser: the fastest at strength 2 and up and cheap to swim, but slow to dash and wide in the turn.",
+	"paddle": "Paddle, the sprinter: the best dash and tight turns, but draggy and the costliest to swim.",
+	"whip": "Whip, the thrifty one: the cheapest to swim and the tightest turn, but slow.",
+}
+## [stat key, name, unit, higher is better]
 const STAT_ROWS := [
 	["top_speed", "Top speed", "m/s", true],
 	["burst_speed", "Burst", "m/s", true],
+	["accel", "Pick-up", "m/s²", true],
 	["turn_radius", "Turn at speed", "m radius", false],
 	["trim", "Rise and dive", "m/s", true],
 	["rated_depth", "Stands depth", "m", true],
 	["sight", "Sight", "m", true],
 	["max_health", "Health", "", true],
 	["upkeep", "Upkeep", "/s", false],
+	["thrust_cost", "Swim cost", "/s", false],
 ]
+## The test swim's rows: [AquaticSim.trial() key, name, unit, higher is better, display factor].
+const TRIAL_ROWS := [
+	["dash_1s_m", "Dash, 1 s", "m", true, 1.0],
+	["cruise_10s_m", "Cruise, 10 s", "m", true, 1.0],
+	["turn_1s_rad", "Turn, 1 s", "°", true, 180.0 / PI],
+	["energy_10s", "Energy, 10 s", "", false, 1.0],
+]
+const BETTER_COLOR := "#7dff9a"
+const WORSE_COLOR := "#ff8a7a"
+const PARENT_PATH_COLOR := Color(1.0, 1.0, 1.0, 0.5)
+const CHILD_PATH_COLOR := Color(0.45, 0.92, 1.0)
+
+
+## The test swim's turn course from above (AquaticSim.trial().path): the parent's and the offspring's, from the same
+## start, with a dot each second, a tick where the hard turn begins and a scale bar.
+class CourseView extends Control:
+	var paths: Array = []   ## [[points ([x, z] metres), Color, width], ...]
+	var turn_at := 30       ## the sample the turn starts at
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.05, 0.1, 0.55))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.5, 0.85, 1.0, 0.35), false, 1.0)
+		var lo := Vector2.ZERO
+		var hi := Vector2.ZERO
+		for p in paths:
+			for q in p[0]:
+				lo = Vector2(minf(lo.x, float(q[0])), minf(lo.y, float(q[1])))
+				hi = Vector2(maxf(hi.x, float(q[0])), maxf(hi.y, float(q[1])))
+		var margin := 14.0
+		var area := size - Vector2(0.0, 18.0)   # the scale bar's strip stays clear
+		var span := (hi - lo).max(Vector2(4.0, 4.0))
+		var k := minf((area.x - 2.0 * margin) / span.x, (area.y - 2.0 * margin) / span.y)
+		var offset := (area - span * k) * 0.5 - lo * k
+		for p in paths:
+			var pts := PackedVector2Array()
+			for q in p[0]:
+				pts.append(offset + Vector2(float(q[0]), float(q[1])) * k)
+			if pts.size() > 1:
+				draw_polyline(pts, p[1], float(p[2]), true)
+			for i in range(10, pts.size(), 10):
+				draw_circle(pts[i], float(p[2]) * 0.9, p[1])
+			if pts.size() > turn_at:
+				var tangent := (pts[turn_at] - pts[turn_at - 1]).normalized()
+				var side := Vector2(-tangent.y, tangent.x) * 7.0
+				draw_line(pts[turn_at] - side, pts[turn_at] + side, p[1], 2.0)
+			if not pts.is_empty():
+				draw_circle(pts[pts.size() - 1], float(p[2]) + 2.5, p[1])
+		draw_circle(offset, 4.0, Color.WHITE)
+		var bar_m := 1.0
+		for m in [20.0, 10.0, 5.0, 2.0]:
+			if m * k <= size.x * 0.45:
+				bar_m = m
+				break
+		var y := size.y - 8.0
+		draw_line(Vector2(8.0, y), Vector2(8.0 + bar_m * k, y), Color(1, 1, 1, 0.8), 2.0)
+		draw_string(get_theme_default_font(), Vector2(12.0 + bar_m * k, y + 5.0), "%d m" % int(bar_m),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 1, 1, 0.8))
+
 
 var rules: Dictionary
 var parent_body: Dictionary
@@ -35,7 +106,15 @@ var stats_label: RichTextLabel
 var cost_label: Label
 var done_button: Button
 var problems_label: Label
+var tail_caption: Label
+var trial_label: RichTextLabel
+var course_view: CourseView
+## The test swims of the parent and of the body as it stands (AquaticSim.trial()), for the stats and the smokes.
+var before_trial := {}
+var after_trial := {}
 var _value_labels := {}
+## AquaticSim.trial() results by the body's JSON, so a click back to an earlier body swims nothing again.
+var _trials := {}
 
 
 ## Opens on the parent's body with `p_points` to spend.
@@ -60,8 +139,8 @@ func open(p_rules: Dictionary, p_body: Dictionary, p_points: int) -> void:
 func _build_plinth() -> void:
 	var holder := SubViewportContainer.new()
 	holder.stretch = true
-	holder.position = Vector2(620, 60)
-	holder.size = Vector2(1240, 760)
+	holder.position = Vector2(620, 40)
+	holder.size = Vector2(1240, 600)
 	add_child(holder)
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
@@ -112,7 +191,14 @@ func _build_panel() -> void:
 	title.add_theme_font_size_override("font_size", 40)
 	panel.add_child(title)
 	_section(panel, "Tail")
-	_choice_row(panel, "tail", rules.body.tails, TAIL_NAMES)
+	_choice_row(panel, "tail", rules.body.tails, TAIL_NAMES, TAIL_ROLES)
+	tail_caption = Label.new()
+	tail_caption.name = "TailCaption"
+	tail_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tail_caption.custom_minimum_size = Vector2(540, 0)
+	tail_caption.add_theme_font_size_override("font_size", 19)
+	tail_caption.modulate = Color(0.85, 0.95, 1.0, 0.85)
+	panel.add_child(tail_caption)
 	_step_row(panel, "tail_size", "Tail strength")
 	_section(panel, "Fins")
 	_step_row(panel, "fins", "Side fins")
@@ -130,12 +216,29 @@ func _build_panel() -> void:
 	mouth.modulate = Color(1, 1, 1, 0.75)
 	panel.add_child(mouth)
 	stats_label = RichTextLabel.new()
+	stats_label.name = "Stats"
 	stats_label.bbcode_enabled = true
-	stats_label.fit_content = true
-	stats_label.position = Vector2(660, 830)
-	stats_label.size = Vector2(1200, 180)
-	stats_label.add_theme_font_size_override("normal_font_size", 21)
+	stats_label.scroll_active = false
+	stats_label.position = Vector2(640, 660)
+	stats_label.size = Vector2(700, 280)
+	stats_label.add_theme_font_size_override("normal_font_size", 20)
+	stats_label.add_theme_font_size_override("bold_font_size", 22)
 	add_child(stats_label)
+	trial_label = RichTextLabel.new()
+	trial_label.name = "TestSwim"
+	trial_label.bbcode_enabled = true
+	trial_label.scroll_active = false
+	trial_label.position = Vector2(1360, 660)
+	trial_label.size = Vector2(290, 280)
+	trial_label.add_theme_font_size_override("normal_font_size", 20)
+	trial_label.add_theme_font_size_override("bold_font_size", 22)
+	add_child(trial_label)
+	course_view = CourseView.new()
+	course_view.name = "TestSwimCourse"
+	course_view.position = Vector2(1660, 666)
+	course_view.size = Vector2(200, 200)
+	course_view.turn_at = roundi(3.0 * AquaticSim.TICK_HZ / AquaticSim.TRIAL_PATH_EVERY)
+	add_child(course_view)
 	var bottom := HBoxContainer.new()
 	bottom.position = Vector2(48, 960)
 	bottom.add_theme_constant_override("separation", 18)
@@ -172,12 +275,13 @@ func _section(panel: Node, text: String) -> void:
 	panel.add_child(l)
 
 
-func _choice_row(panel: Node, key: String, options: Array, names: Dictionary) -> void:
+func _choice_row(panel: Node, key: String, options: Array, names: Dictionary, tips := {}) -> void:
 	var row := HBoxContainer.new()
 	panel.add_child(row)
 	for o in options:
 		var b := Button.new()
 		b.text = String(names.get(o, o))
+		b.tooltip_text = String(tips.get(o, ""))
 		b.toggle_mode = true
 		b.name = "%s_%s" % [key, o]
 		b.pressed.connect(func(): set_choice(key, String(o)))
@@ -230,16 +334,29 @@ func _refresh() -> void:
 		else:
 			for b in v.get_children():
 				(b as Button).button_pressed = String(b.name) == "%s_%s" % [key, body[key]]
+	tail_caption.text = String(TAIL_ROLES.get(String(body.tail), ""))
 	var before := AquaticBody.stats(parent_body, rules.body)
 	var after := AquaticBody.stats(body, rules.body)
-	var lines := PackedStringArray()
-	for row in STAT_ROWS:
-		var a := float(before[row[0]])
-		var b := float(after[row[0]])
-		var better: bool = (b > a) == bool(row[3])
-		var colour := "white" if is_equal_approx(a, b) else ("#7dff9a" if better else "#ff8a7a")
-		lines.append("%s: %.1f → [color=%s]%.1f[/color] %s" % [row[1], a, colour, b, row[2]])
-	stats_label.text = "    ".join(lines.slice(0, 4)) + "\n" + "    ".join(lines.slice(4))
+	var half := ceili(STAT_ROWS.size() / 2.0)
+	var text := "[b]Swim stats[/b]  [color=#ffffff99](parent → offspring)[/color]\n[table=4]"
+	for i in half:
+		for row in [STAT_ROWS[i], STAT_ROWS[i + half] if i + half < STAT_ROWS.size() else null]:
+			if row == null:
+				text += "[cell][/cell][cell][/cell]"
+				continue
+			text += "[cell]%s    [/cell][cell]%s      [/cell]" % [row[1],
+					_before_after(float(before[row[0]]), float(after[row[0]]), bool(row[3]), String(row[2]), 1.0)]
+	stats_label.text = text + "[/table]"
+	before_trial = _trial(parent_body)
+	after_trial = _trial(body)
+	text = "[b]Test swim[/b]  [color=#ffffff99](the same water)[/color]\n[table=2]"
+	for row in TRIAL_ROWS:
+		text += "[cell]%s    [/cell][cell]%s[/cell]" % [row[1], _before_after(float(before_trial[row[0]]),
+				float(after_trial[row[0]]), bool(row[3]), String(row[2]), float(row[4]))]
+	trial_label.text = text + "[/table]\n[font_size=16][color=#ffffffaa]From still: 3 s ahead, then a hard right turn.\n" \
+			+ "[color=#ffffff80]━[/color] parent  [color=#%s]━[/color] offspring[/color][/font_size]" % CHILD_PATH_COLOR.to_html(false)
+	course_view.paths = [[before_trial.path, PARENT_PATH_COLOR, 2.0], [after_trial.path, CHILD_PATH_COLOR, 3.0]]
+	course_view.queue_redraw()
 	var affordable := cost <= points
 	cost_label.text = "Cost %d of %d points" % [cost, points]
 	cost_label.modulate = Color.WHITE if affordable else Color(1.0, 0.55, 0.5)
@@ -247,6 +364,24 @@ func _refresh() -> void:
 	done_button.disabled = not affordable or not problems.is_empty()
 	problems_label.text = "; ".join(problems) if not problems.is_empty() else ("" if affordable else "Not enough points: undo a change, or earn more by eating, exploring and making friends.")
 	_rebuild_rig()
+
+
+## "before → after unit", the after coloured by whether it is better or worse (white when the same).
+static func _before_after(a: float, b: float, higher_is_better: bool, unit: String, factor: float) -> String:
+	var digits := "%.0f" if unit == "°" else "%.1f"
+	var shown_a := digits % (a * factor)
+	var shown_b := digits % (b * factor)
+	# Coloured only when the shown numbers differ, so "3.5 → 3.5" is never painted as a change.
+	var colour := "white" if shown_a == shown_b else (BETTER_COLOR if (b > a) == higher_is_better else WORSE_COLOR)
+	return ("%s → [color=%s]%s[/color]%s" % [shown_a, colour, shown_b, ("" if unit == "°" else " ") + unit]).strip_edges()
+
+
+## The test swim of `b`, swum once per distinct body.
+func _trial(b: Dictionary) -> Dictionary:
+	var key := JSON.stringify(b, "", true)
+	if not _trials.has(key):
+		_trials[key] = AquaticSim.trial(rules, b)
+	return _trials[key]
 
 
 func _rebuild_rig() -> void:

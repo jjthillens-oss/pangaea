@@ -326,6 +326,82 @@ func test_no_tail_part_beats_another_on_every_count() -> void:
 			"and the lunate cruises faster")
 
 
+## The editor's test swim (AquaticSim.trial, aquatic-r2; the roles are PROPOSED and named in the editor's TAIL_ROLES):
+## on the darter at full tail strength each tail wins the course its role promises.
+func test_each_tail_wins_its_own_course() -> void:
+	var runs := {}
+	for tail in rules.body.tails:
+		var body := AquaticBody.DARTER.duplicate()
+		body.tail = tail
+		body.tail_size = 3
+		runs[tail] = AquaticSim.trial(rules, body)
+	var best := func(key: String, most: bool) -> String:
+		var out := ""
+		for tail in runs:
+			if out == "" or (float(runs[tail][key]) > float(runs[out][key])) == most and runs[tail][key] != runs[out][key]:
+				out = tail
+		return out
+	var table := JSON.stringify(runs.keys().map(func(t): return [t, snappedf(runs[t].dash_1s_m, 0.01),
+			snappedf(runs[t].cruise_10s_m, 0.01), snappedf(runs[t].turn_1s_rad, 0.001), snappedf(runs[t].energy_10s, 0.01)]))
+	check_eq(best.call("cruise_10s_m", true), "lunate", "the lunate cruises furthest in 10 s: %s" % table)
+	check_eq(best.call("dash_1s_m", true), "paddle", "the paddle dashes furthest in 1 s")
+	check_eq(best.call("energy_10s", false), "whip", "the whip swims 10 s on the least energy")
+	check_eq(best.call("energy_10s", true), "paddle", "the paddle on the most")
+	check(best.call("turn_1s_rad", true) in ["whip", "ribbon"], "the whip or the ribbon turns most in a second at speed")
+	check(runs.lunate.dash_1s_m < runs.fluke.dash_1s_m and runs.lunate.turn_1s_rad < runs.fluke.turn_1s_rad,
+			"the lunate pays for its cruise: a shorter dash and a wider turn than the fluke")
+	check(runs.ribbon.turn_1s_rad > runs.fluke.turn_1s_rad and runs.ribbon.energy_10s > runs.fluke.energy_10s,
+			"the ribbon turns more than the fluke and costs more")
+	# "Strong even when small": at strength 1 on the hoverer the ribbon outswims the fluke.
+	var small_fluke := AquaticBody.HOVERER.duplicate()
+	small_fluke.tail = "fluke"
+	check(AquaticSim.trial(rules, AquaticBody.HOVERER).cruise_10s_m > AquaticSim.trial(rules, small_fluke).cruise_10s_m,
+			"at strength 1 the ribbon cruises further than the fluke")
+	# The turn course is drawn: 3 s ahead then turning, sampled from the start.
+	var path: Array = runs.fluke.path
+	var ticks := 3 * AquaticSim.TICK_HZ + int(round(AquaticSim.TRIAL_TURN_S * AquaticSim.TICK_HZ))
+	check_eq(path.size(), 1 + ticks / AquaticSim.TRIAL_PATH_EVERY, "the path has a sample every %d ticks" % AquaticSim.TRIAL_PATH_EVERY)
+	check(absf(float(path[path.size() - 1][0])) > 3.0, "and it turns off the straight line")
+
+
+## The editor's preview is the water: trial() is the sim swum on the same course (a hand run in the full world, with its
+## food, animals and hazards, covers the same metres), its energy is the sim's swim cost, and a long burst reaches the
+## burst speed the editor shows.
+func test_the_editor_preview_and_the_water_agree() -> void:
+	var paddle := AquaticBody.DARTER.duplicate()
+	paddle.tail = "paddle"
+	var whip := AquaticBody.HOVERER.duplicate()
+	whip.tail = "whip"
+	for body in [AquaticBody.DARTER, AquaticBody.HOVERER, paddle, whip]:
+		var t := AquaticSim.trial(rules, body)
+		var s := AquaticBody.stats(body, rules.body)
+		var label := "%s/%d" % [body.tail, int(body.length)]
+		var dash := AquaticSim.Intent.new(1.0, 0.0, 0.0)
+		dash.burst = true
+		var sim := _sim(body)
+		sim.player.pos = AquaticSim.TRIAL_START
+		sim.player.heading = 0.0
+		for i in AquaticSim.TICK_HZ:
+			sim.step(dash)
+		check_near(AquaticSim._flat_from_start(sim.player.pos), float(t.dash_1s_m), 1e-5, "%s: the dash in the world" % label)
+		sim = _sim(body)
+		sim.player.pos = AquaticSim.TRIAL_START
+		sim.player.heading = 0.0
+		for i in 10 * AquaticSim.TICK_HZ:
+			sim.step(AquaticSim.Intent.new(1.0, 0.0, 0.0))
+		check_near(AquaticSim._flat_from_start(sim.player.pos), float(t.cruise_10s_m), 1e-5, "%s: the cruise in the world" % label)
+		check_near(float(t.energy_10s), (float(s.upkeep) + float(s.thrust_cost)) * 10.0, 1e-3, "%s: the energy is the swim cost" % label)
+		# A long burst and a long cruise reach the speeds the editor shows (fed, so it never starves).
+		for pair in [[dash, float(s.burst_speed), "burst"], [AquaticSim.Intent.new(1.0, 0.0, 0.0), float(s.top_speed), "top"]]:
+			sim = _sim(body)
+			sim.player.pos = AquaticSim.TRIAL_START
+			for i in 14 * AquaticSim.TICK_HZ:
+				sim.player.energy = float(s.energy_capacity)
+				sim.step(pair[0])
+			check(absf(float(sim.player.speed) - float(pair[1])) <= float(pair[1]) * 0.02,
+					"%s: the %s speed swum (%.2f) is the stat (%.2f)" % [label, pair[2], float(sim.player.speed), float(pair[1])])
+
+
 func test_the_world_is_deterministic() -> void:
 	var a := _sim(AquaticBody.HOVERER, 42)
 	var b := _sim(AquaticBody.HOVERER, 42)

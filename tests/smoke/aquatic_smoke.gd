@@ -7,10 +7,11 @@ extends SceneTree
 ##       First a cell lineage is founded in the slot (the hunter: a jaw and two flagella), as the cell stage writes
 ##       it. Main opens the Aquatic stage on it: the body is the converted darter with the jaw, the generation and
 ##       lineage id are the save's, and the entry card shows. A scripted swim goes from the nest down the slope and
-##       eats; a fed fish by its kin mates and the editor opens; one fin step and Done make generation 2 with the
-##       parent recorded; Escape saves and goes back to the title. The slot then holds the aquatic block (save v5)
+##       eats; a fed fish by its kin mates and the editor opens; one fin step and a swap to the lunate tail (aquatic-r2:
+##       its test swim is the sim's own) and Done make generation 2 with the parent recorded; Escape saves and goes
+##       back to the title. The slot then holds the aquatic block (save v5)
 ##       beside the cell's own data, and opening the stage again brings back the same fish, generation, finds,
-##       points and place (the reload check).
+##       points and place (the reload check), the new tail included.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SMOKE_DIR := "user://smoke"
@@ -82,11 +83,19 @@ func _run() -> void:
 		var parent_fins := int(sim.player.body.fins)
 		stage.editor.call("step", "fins", 1)
 		_check(int(stage.editor.get("cost")) == 2, "a fin step costs 2 points")
+		stage.editor.call("set_choice", "tail", "lunate")
+		_check(int(stage.editor.get("cost")) == 4, "and a swap to the lunate tail 2 more (%d)" % int(stage.editor.get("cost")))
+		var shown: Dictionary = stage.editor.get("after_trial")
+		var swum := AquaticSim.trial(stage.rules, stage.editor.get("body"))
+		_check(not shown.is_empty() and is_equal_approx(float(shown.cruise_10s_m), float(swum.cruise_10s_m))
+				and float(shown.cruise_10s_m) > float((stage.editor.get("before_trial") as Dictionary).cruise_10s_m),
+				"the editor's test swim is the lunate's own: %.1f m in 10 s, further than the parent" % float(shown.get("cruise_10s_m", 0.0)))
 		stage.editor.call("commit")
 		await _frames(SETTLE_FRAMES)
 		_check(stage.editor == null, "Done closes the editor")
 		_check(int(sim.player.generation) == founded.save.genome.generation + 1, "the next generation swims")
 		_check(int(sim.player.body.fins) == parent_fins + 1 and sim.history.size() == 1, "with the new fins, the parent recorded")
+		_check(String(sim.player.body.tail) == "lunate", "and the lunate tail")
 		_check(stage.world.get_node_or_null("Player") != null, "the new body is drawn")
 	await _frames(30)
 	var left: Dictionary = sim.to_save()

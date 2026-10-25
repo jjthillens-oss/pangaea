@@ -25,6 +25,13 @@ const VERTICAL_RESPONSE := 3.0   ## per second: how fast vertical speed reaches 
 const WALL_START := 36.0
 const WALL_SPAN := 16.0
 const WALL_HEIGHT := 16.0
+## The editor's test swim (trial()): every course starts still here, facing down the route, in open water below the
+## nest, clear of the walls and the shelters and far above every legal rated depth.
+const TRIAL_START := Vector3(0.0, -6.0, 4.0)
+## How long the turn course keeps turning (s), for the editor's drawing of it; turn_1s_rad reads its first second.
+const TRIAL_TURN_S := 3.0
+## The turn course's path is sampled every this many ticks.
+const TRIAL_PATH_EVERY := 6
 
 ## One tick's input. thrust, turn and rise are -1..1; bite, signal and interact are presses on this tick.
 class Intent:
@@ -629,6 +636,62 @@ func apply_offspring(body: Dictionary, cost: int) -> bool:
 	player.energy = float(s.energy_capacity) * float(rules.world.mating.energy_after_share)
 	_emit("generation", {"generation": int(player.generation)})
 	return true
+
+
+## The editor's test swim (aquatic-r2; Bible §12 "a test space", Spore's test drive; the courses are PROPOSED):
+## `body` swims fixed courses in this same sim, on an emptied copy of the route (no food, no animals, a lancer that
+## never notices and a drifter that never comes near), so every number the editor shows is the water's own. Each
+## course starts still at TRIAL_START facing down the route, with the rise held at 0:
+##   dash_1s_m     metres covered (seen from above) in the first second of full thrust with a burst
+##   cruise_10s_m  metres covered in ten seconds of full thrust, no burst
+##   energy_10s    the energy those ten seconds cost (upkeep and swimming)
+##   turn_1s_rad   radians turned in the first second of full thrust and a hard right turn, after 3 s of full thrust
+##   path          the turn course from above, 3 s straight then TRIAL_TURN_S s turning: [x, z] metres from the start
+##                 every TRIAL_PATH_EVERY ticks (the start first), for the editor's drawing
+static func trial(p_rules: Dictionary, body: Dictionary) -> Dictionary:
+	var r: Dictionary = p_rules.duplicate(true)
+	r.world.feeding = []
+	for id in r.species:
+		r.species[id].count = 0
+	r.hazards.lancer.notice = -1.0
+	r.hazards.drifter.warn_reach = -1.0
+	var ahead := Intent.new(1.0, 0.0, 0.0)
+	var dash := Intent.new(1.0, 0.0, 0.0)
+	dash.burst = true
+	var hard := Intent.new(1.0, 1.0, 0.0)
+	var sim := _trial_sim(r, body)
+	for i in TICK_HZ:
+		sim.step(dash)
+	var dash_m := _flat_from_start(sim.player.pos)
+	sim = _trial_sim(r, body)
+	var energy_before := float(sim.player.energy)
+	for i in 10 * TICK_HZ:
+		sim.step(ahead)
+	var cruise_m := _flat_from_start(sim.player.pos)
+	var energy := energy_before - float(sim.player.energy)
+	sim = _trial_sim(r, body)
+	var path := [[0.0, 0.0]]
+	var turned := 0.0
+	var straight_ticks := 3 * TICK_HZ
+	for i in straight_ticks + int(round(TRIAL_TURN_S * TICK_HZ)):
+		var was := float(sim.player.heading)
+		sim.step(hard if i >= straight_ticks else ahead)
+		if i >= straight_ticks and i < straight_ticks + TICK_HZ:
+			turned += absf(wrapf(float(sim.player.heading) - was, -PI, PI))
+		if (i + 1) % TRIAL_PATH_EVERY == 0:
+			path.append([float(sim.player.pos.x) - TRIAL_START.x, float(sim.player.pos.z) - TRIAL_START.z])
+	return {"dash_1s_m": dash_m, "cruise_10s_m": cruise_m, "energy_10s": energy, "turn_1s_rad": turned, "path": path}
+
+
+static func _trial_sim(r: Dictionary, body: Dictionary) -> AquaticSim:
+	var sim := AquaticSim.new(r, 0, body)
+	sim.player.pos = TRIAL_START
+	sim.player.heading = 0.0
+	return sim
+
+
+static func _flat_from_start(pos: Vector3) -> float:
+	return Vector2(pos.x - TRIAL_START.x, pos.z - TRIAL_START.z).length()
 
 
 ## A plain snapshot (vectors as [x, y, z]) for tests and the determinism check.
