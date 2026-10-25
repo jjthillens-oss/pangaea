@@ -2146,8 +2146,16 @@ def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0, slit_axis=(0
     detail = sh.math("ADD", sh.remap(fibres, 0.3, 0.7, 0.55, 0.95), sh.math("MULTIPLY", flecks, -0.1))
     base = sh.mix(limbal, (0.22, 0.22, 0.22, 1.0), sh.mix(detail, (0.5, 0.5, 0.5, 1.0), (0.95, 0.95, 0.95, 1.0)))
     if slit > 0.0:
-        across = sh.math("ABSOLUTE", sh.vmath("DOT_PRODUCT", n, tuple(slit_axis)))
-        hole = sh.math("MULTIPLY", sh.remap(across, slit + 0.015, slit), sh.remap(facing, math.cos(pupil) - 0.02, math.cos(pupil)))
+        # A lens: (across/slit)^2 + (along/length)^2 < 1, with `length` the pupil's half-angle sine, so the ends
+        # taper to points instead of a ruled bar; the edge band is narrow so the bake keeps it crisp.
+        sa = Vector(slit_axis).normalized()
+        along_axis = sa.cross(axis.normalized()).normalized()
+        across = sh.vmath("DOT_PRODUCT", n, tuple(sa))
+        along = sh.vmath("DOT_PRODUCT", n, tuple(along_axis))
+        length = math.sin(pupil)
+        e = sh.math("ADD", sh.math("MULTIPLY", sh.math("MULTIPLY", across, across), 1.0 / (slit * slit)),
+                    sh.math("MULTIPLY", sh.math("MULTIPLY", along, along), 1.0 / (length * length)))
+        hole = sh.math("MULTIPLY", sh.remap(e, 1.0, 0.82), sh.remap(facing, 0.0, 0.05))
     else:
         hole = sh.remap(facing, math.cos(pupil) - 0.004, math.cos(pupil) + 0.004)
     base = sh.mix(hole, base, (0.03, 0.03, 0.03, 1.0))
@@ -3882,17 +3890,21 @@ def build_eye_bulge():
     centre = Vector((0.0, 0.0, R * 1.05))
     axis = Vector((0.0, 0.0, 1.0))
     sclera = _sclera_material("M_EyeBulgeBallProc")
-    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, math.radians(86.0), math.radians(30.0), slit=0.2,
+    # The iris runs down to 108 degrees, just above the mound's lip (about 115), so only a thin cream rim shows.
+    iris_half = math.radians(108.0)
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, iris_half, math.radians(34.0), slit=0.11,
                               slit_axis=(0.0, 1.0, 0.0))
-    ball = _eye_ball("EyeBulge", centre, R, math.radians(86.0), sclera, iris_mat, segs=24)
+    ball = _eye_ball("EyeBulge", centre, R, iris_half, sclera, iris_mat, segs=24)
     sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
     # The mound: a skirt flaring into the skin, rising only to a low lip well below the ball's equator, so the ball sits high and round on it.
     prof = []
-    steps = 12
     top = centre.z - 0.42 * R
-    for i in range(steps + 1):
-        t = i / steps
-        z = -(BULGE_SINK - 0.0012) + (top + BULGE_SINK - 0.0012) * t
+    low = centre.z - 0.8 * R
+    z0 = -(BULGE_SINK - 0.0012)
+    # Five rings up the skirt, then eight between `low` and the lip: the blink rolls those eight over the ball,
+    # and they need to be dense enough to close on a round dome rather than a faceted cone.
+    zs = [z0 + (low - z0) * i / 5 for i in range(5)] + [low + (top - low) * i / 8 for i in range(9)]
+    for z in zs:
         if z <= 0.0:
             r = R * 1.45 + 0.1 * R * (z + BULGE_SINK) / BULGE_SINK
         else:
@@ -3904,20 +3916,23 @@ def build_eye_bulge():
     mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat], parent=ball, fix_normals=False)
     mound_mat.name = "M_EyeBulgeMound"
     baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#D9D2A8")),
-                  "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E"))}, size=256)
+                  "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E"))}, size=512)
     pts = _check_pivot("eye_bulge", BULGE_SINK)
     foot = _footprint(pts, z_max=0.02)
-    low = centre.z - 0.8 * R
 
     def blink(co):
-        if co.z <= low:
+        if co.z <= low + 1e-6:
             return co
         k = min(1.0, (co.z - low) / (top - low))
         d = co - centre
-        theta = math.atan2(math.hypot(d.x, d.y), d.z)
         phi = math.atan2(d.y, d.x)
-        th = theta * (1.0 - 0.996 * k ** 1.5)  # the top ring closes to a sub-millimetre point (an exact collapse crashes the glTF import)
-        rad = d.length + max(0.0, 1.07 * R - d.length) * k
+        th_low = math.atan2(math.hypot(d.x, d.y), low - centre.z)
+        # The rings spread evenly in angle from `low` to the pole, easing onto one sphere just outside the ball, so
+        # the closed lid is a round dome. The top ring stays a sub-millimetre ring (an exact collapse to a point made
+        # duplicate vertices that crashed the glTF import).
+        th = th_low * (1.0 - k) + 0.004 * k
+        s = bc.smoothstep(min(1.0, k * 2.0))
+        rad = d.length + (1.07 * R - d.length) * s
         return centre + Vector((math.sin(th) * math.cos(phi), math.sin(th) * math.sin(phi), math.cos(th))) * rad
 
     def bulge(co):
@@ -3930,7 +3945,7 @@ def build_eye_bulge():
     rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
             "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 2, **baked}
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 3, **baked}
 
 
 HAND_FROG_T = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
