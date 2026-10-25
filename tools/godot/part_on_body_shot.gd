@@ -19,6 +19,9 @@ extends SceneTree
 ## that part type whose material has that name a flat unlit colour, to find which faces make a highlight or a band.
 ## --param sets skin shader uniforms (float values) on the body and every fur shell pass (SpineRig.set_skin_param),
 ## to compare settings without editing the shader. Each view prints "part_on_body <prefix> <view>: X ms/frame".
+## --scene=world instead sets the preset up as the player in the creature world
+## (game/scenes/creature/creature_world.tscn, setup() like its tests: seed 7, 150 points) and writes
+## <prefix>_world.png from the world's own camera and HUD, the view the game plays in (--param is ignored there).
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")
@@ -27,6 +30,7 @@ const Look := preload("res://game/scenes/creature/creature_look.gd")
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
 const EDITOR_SCENE := "res://game/scenes/creature/creature_editor.tscn"
+const WORLD_SCENE := "res://game/scenes/creature/creature_world.tscn"
 
 const DISTANCE_PER_BODY_M := 2.4    # creature_world.gd CAMERA_DISTANCE_PER_BODY_M
 const DISTANCE_MIN_M := 2.6
@@ -48,6 +52,7 @@ var no_floor := false
 var zoom := 1.0
 var marks := []             # [part type, material name, colour]
 var skin_params := {}       # --param: skin shader uniform -> float
+var in_world := false       # --scene=world
 
 
 func _initialize() -> void:
@@ -76,6 +81,8 @@ func _initialize() -> void:
 			shadow = true
 		elif arg == "--scene=bare":
 			bare = true
+		elif arg == "--scene=world":
+			in_world = true
 		elif arg == "--no-floor":
 			no_floor = true
 		elif arg.begins_with("--zoom="):
@@ -94,6 +101,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	if in_world:
+		await _world_shot()
+		quit()
+		return
 	var desc: RefCounted = CreatureData.preset_body(preset_name)
 	var box: AABB = desc.bounds_m()
 	var rig: Node3D
@@ -282,3 +293,18 @@ func _lights(world: Node3D) -> void:
 	fill.rotation_degrees = Vector3(-15, -140, 0)
 	fill.light_energy = 0.45
 	world.add_child(fill)
+
+
+## The preset as the player in the creature world, from the world's own camera.
+func _world_shot() -> void:
+	var w: Node = load(WORLD_SCENE).instantiate()
+	root.add_child(w)
+	await process_frame
+	w.setup(CreatureData.preset(preset_name)["body"], 7, 150)
+	for f in 30:
+		await process_frame
+	var t0 := Time.get_ticks_usec()
+	for f in 10:
+		await RenderingServer.frame_post_draw
+	print("part_on_body %s world: %.1f ms/frame" % [prefix, (Time.get_ticks_usec() - t0) / 10000.0])
+	root.get_texture().get_image().save_png(out_dir.path_join("%s_world.png" % prefix))
