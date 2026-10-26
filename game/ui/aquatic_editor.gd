@@ -114,6 +114,7 @@ func _build_panel() -> void:
 	_section(panel, "Fins")
 	_step_row(panel, "fins", "Side fins")
 	_step_row(panel, "dorsal", "Back fin and spines")
+	_step_row(panel, "limbs", "Lobe fins (crawl ashore)")
 	_section(panel, "Body")
 	_step_row(panel, "length", "Length")
 	_step_row(panel, "girth", "Depth of body")
@@ -209,7 +210,7 @@ func _step_row(panel: Node, key: String, text: String) -> void:
 ## Moves a number by `delta` inside its range (the buttons; tests call it too).
 func step(key: String, delta: int) -> void:
 	var r: Array = rules.body.ranges[key]
-	body[key] = clampi(int(body[key]) + delta, int(r[0]), int(r[1]))
+	body[key] = clampi(int(body.get(key, 0)) + delta, int(r[0]), int(r[1]))
 	_refresh()
 
 
@@ -223,7 +224,7 @@ func _refresh() -> void:
 	for key in _value_labels:
 		var v: Node = _value_labels[key]
 		if v is Label:
-			(v as Label).text = str(int(body[key]))
+			(v as Label).text = str(int(body.get(key, 0)))
 		else:
 			for b in v.get_children():
 				(b as Button).button_pressed = String(b.name) == "%s_%s" % [key, body[key]]
@@ -237,6 +238,10 @@ func _refresh() -> void:
 		var colour := "white" if is_equal_approx(a, b) else ("#7dff9a" if better else "#ff8a7a")
 		lines.append("%s: %.1f → [color=%s]%.1f[/color] %s" % [row[1], a, colour, b, row[2]])
 	stats_label.text = "    ".join(lines.slice(0, 4)) + "\n" + "    ".join(lines.slice(4))
+	if bool(after.can_crawl):
+		stats_label.text += "\n[color=#7dff9a]Lobe fins strong enough to crawl ashore[/color]"
+	elif int(after.limbs) > 0:
+		stats_label.text += "\nLobe fins: %d of %d to crawl ashore" % [int(after.limbs), int(rules.body.crawl_limbs)]
 	var affordable := cost <= points
 	cost_label.text = "Cost %d of %d points" % [cost, points]
 	cost_label.modulate = Color.WHITE if affordable else Color(1.0, 0.55, 0.5)

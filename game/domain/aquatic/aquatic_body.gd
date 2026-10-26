@@ -2,7 +2,8 @@ class_name AquaticBody
 extends RefCounted
 ## An aquatic body and its swim stats (aquatic plan sections 4 and 8, PROPOSED). The body is plain data:
 ##   {"length", "girth": 1..3, "tail": "fluke" | "ribbon", "tail_size": 1..3, "fins": 0..3, "dorsal": 0..2,
-##    "bladder": 0..3, "sense": "eyes" | "barbels" | "lure", "mouth": "filter" | "jaw" | "both", "hue": 0..1}
+##    "bladder": 0..3, "sense": "eyes" | "barbels" | "lure", "mouth": "filter" | "jaw" | "both", "hue": 0..1,
+##    "limbs": 0..2 (optional, 0 when missing: lobe fins; at the rules' crawl_limbs the fish can crawl ashore)}
 ## and every stat comes from it through the tuning in game/data/aquatic/aquatic_rules.json ("body"), so play, the
 ## editor's preview and the bots read one answer (Bible §12). Pure rules: no scene, UI or file access.
 ## to_description() builds the creature stage's body description for the generated skin, so the fish is drawn by
@@ -10,6 +11,8 @@ extends RefCounted
 
 const KEYS: PackedStringArray = ["length", "girth", "tail", "tail_size", "fins", "dorsal", "bladder", "sense", "mouth", "hue"]
 const INT_KEYS: PackedStringArray = ["length", "girth", "tail_size", "fins", "dorsal", "bladder"]
+## Keys a body may leave out (a body saved before they existed): their value is 0.
+const OPTIONAL_INT_KEYS: PackedStringArray = ["limbs"]
 const BodyDescription := preload("res://game/domain/creature/body_description.gd")
 
 ## The two starting variants (plan section 8): the darter is built for straight-line speed, the hoverer for
@@ -35,6 +38,11 @@ static func validate(body: Dictionary, rules: Dictionary) -> PackedStringArray:
 		var r: Array = ranges.get(key, [0, 0])
 		if not (v is int or (v is float and v == floorf(v))) or int(v) < int(r[0]) or int(v) > int(r[1]):
 			out.append("%s must be a whole number from %d to %d." % [key.capitalize(), int(r[0]), int(r[1])])
+	for key in OPTIONAL_INT_KEYS:
+		var v: Variant = body.get(key, 0)
+		var r: Array = ranges.get(key, [0, 0])
+		if not (v is int or (v is float and v == floorf(v))) or int(v) < int(r[0]) or int(v) > int(r[1]):
+			out.append("%s must be a whole number from %d to %d." % [key.capitalize(), int(r[0]), int(r[1])])
 	if not String(body.tail) in rules.get("tails", []):
 		out.append("Unknown tail '%s'." % body.tail)
 	if not String(body.sense) in rules.get("senses", []):
@@ -52,14 +60,17 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 	var fins := int(body.fins)
 	var dorsal := int(body.dorsal)
 	var bladder := int(body.bladder)
+	var limbs := int(body.get("limbs", 0))
 	var tail := String(body.tail)
 	var sense := String(body.sense)
 	var m: Dictionary = rules.mass
 	var mass: float = m.base + m.per_length * length + m.per_girth * girth + m.per_tail * tail_size + m.per_fin * fins
+	mass += float(m.get("per_limb", 0.0)) * limbs
 	var t: Dictionary = rules.thrust[tail]
 	var thrust: float = float(t.base) + float(t.per_size) * tail_size
 	var d: Dictionary = rules.drag
 	var drag: float = d.base + d.per_fin * fins + d.per_dorsal * dorsal + d.per_girth * girth + d.per_length * length
+	drag += float(d.get("per_limb", 0.0)) * limbs
 	var accel := thrust / mass
 	var tr: Dictionary = rules.turn
 	var turn: float = maxf(0.4, tr.base + tr.per_fin * fins + tr.per_dorsal * dorsal + tr.per_length * length)
@@ -88,6 +99,9 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 		"dark_sense": sense in rules.get("dark_sense", []),
 		"lure": sense == "lure",
 		"upkeep": up.base + up.per_length * length + up.per_girth * girth + float(up.get(sense, 0.0)),
+		## Lobe fins strong enough to crawl ashore (plan section 7): the shore offers land only then.
+		"limbs": limbs,
+		"can_crawl": limbs >= int(rules.get("crawl_limbs", 99)),
 		"thrust_cost": float(rules.thrust_cost.per_tail) * tail_size,
 		"energy_capacity": rules.energy_capacity.base + rules.energy_capacity.per_girth * girth,
 		"max_health": rules.max_health.base + rules.max_health.per_girth * girth,
@@ -155,7 +169,7 @@ static func edit_cost(before: Dictionary, after: Dictionary, editor_rules: Dicti
 	var cost := 0
 	var step: Dictionary = editor_rules.step_cost
 	for key in step:
-		cost += absi(int(after[key]) - int(before[key])) * int(step[key])
+		cost += absi(int(after.get(key, 0)) - int(before.get(key, 0))) * int(step[key])
 	var swap: Dictionary = editor_rules.swap_cost
 	if String(after.tail) != String(before.tail):
 		cost += int(swap.tail)
@@ -193,6 +207,11 @@ static func to_description(body: Dictionary, scale_m := 1.0) -> RefCounted:
 			desc.add_part("barbels", _anchor(0, 500, 30, 700, false, 0, 0))
 		"lure":
 			desc.add_part("lure", _anchor(80, 0, 0, 900, false, 0, 0))
+	var limbs := int(body.get("limbs", 0))
+	if limbs > 0:
+		# Lobe fins: a fore and a hind pair low on the flanks, stouter with each step.
+		for u in [330, 640]:
+			desc.add_part("fin", _anchor(u, 330, 0, 300 + 170 * limbs, true, 20, 0))
 	var mouth := "maw" if String(body.get("mouth", "both")) == "filter" else "jaw"
 	desc.add_part(mouth, _anchor(0, 500, 0, 650 + 50 * girth, false, 0, 0))
 	return desc

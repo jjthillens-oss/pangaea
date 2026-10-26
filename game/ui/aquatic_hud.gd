@@ -263,7 +263,8 @@ static func event_text(e: Dictionary) -> String:
 		"died":
 			return "You died (%s). Back at the nest." % e.cause
 		"shore":
-			return "The shore. To go ashore your line needs limbs that can crawl; that comes in a later step."
+			return "" if bool(e.get("can_crawl", false)) else \
+					"The shore. To crawl ashore your line needs strong lobe fins: evolve them at the nest."
 		"mate_not_ready":
 			return "Too hungry to mate: eat first"
 		"generation":
