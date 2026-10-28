@@ -1,5 +1,8 @@
 # Repository tools
 
-`python tools/check_docs.py --report` lists path-shaped references in Markdown that
-do not exist. Use `--strict` to fail on findings or `--selftest` to check the
-parser. Intentional future paths can go in `tools/docs_check_allow.txt`.
+`python tools/check_docs.py --report` lists missing tracked paths and ambiguous
+basenames in Markdown, with candidates for ambiguous names. Use `--json` for a
+deterministic machine-readable report, `--show-prose` to inspect excluded prose,
+`--strict` to fail on findings, or `--selftest` to check the parser. Intentional
+future paths and documented historical source exclusions go in
+`tools/docs_check_allow.txt`.

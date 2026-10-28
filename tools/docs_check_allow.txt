@@ -1,2 +1,22 @@
-# Prefixes ending in / and exact paths are supported. Add only intentional
-# future paths from proposals or the bible, after reviewing the report.
+# Intentional or historical references in binding/proposed documents. Do not edit their text for path drift.
+@document docs/bible/
+@document docs/proposals/
+@document docs/DECISIONS.md
+# Historical research notes record proposed files and observations, not a current path contract.
+@document docs/research/spore/
+# Milestone plans and the creature plan preserve planned layouts from their original dates.
+@document docs/milestones/creature-stage-plan.md
+@document docs/milestones/m1-step2-plan.md
+@document docs/milestones/m1-step3-plan.md
+# Art plans refer to retired materials and future creature assets by design.
+@document docs/art/production_m1.md
+@document docs/art/creature_art_contract.md
+# These names are generated output or explicitly absent examples, not tracked source paths.
+shot.gd
+look_probe.json
+x.json
+slot_3.json
+# The scouting document cites a third-party checkout; it is not vendored into Pangaea.
+addons/gut/LICENSE.md
+# The store checklist names a future upload-tool directory pending store integration.
+tools/steam
