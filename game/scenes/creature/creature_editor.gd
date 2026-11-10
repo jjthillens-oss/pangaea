@@ -87,6 +87,8 @@ const PITCH_MAX := 1.4
 const UNSAVED_TEXT := "Unsaved edits: press Esc or Back again to leave without them"
 const NO_LEGS_TEXT := "No legs to walk on; press Done again to go anyway"
 const LOCKED_TEXT := "Find a %s in the world to use it"
+## The stats line for swim parts kept on a walking body: they slow it on land (CreatureStats land_drag).
+const SWIM_DRAG_TEXT := "Swim parts  %d   ·   land speed -%d%%"
 const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5),
 		"turn": Color(1.0, 0.9, 0.2)}
 const SKIN_COLOR_KEY := "skin_color"

@@ -41,7 +41,7 @@ const TOUCH_REACH_M := 0.15
 ## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, speed_factor,
 ## strength_factor, size_tier, energy_use_factor, turn_factor, charm, has_mouth, has_legs,
 ## leg_length_m, mouths, eyes, weapons, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
-## allows (the run band's Froude number on the shortest leg) times speed_factor; the walk is 0.3 of it, as the lab's
+## allows (the run band's Froude number on the shortest leg) times speed_factor and land_factor; the walk is 0.3 of it, as the lab's
 ## drives.
 ## `part_rules` is consulted for which types exist and their role; a part of an unknown type counts for nothing.
 static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted, tuning: Dictionary) -> Dictionary:
@@ -76,7 +76,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 	var leg_length := 0.0
 	if has_legs:
 		var mech = BodyMechanics.create("stats", gait["body"], gait_table)
-		speed = mech.v_top * speed_k
+		speed = mech.v_top * speed_k * land_k
 		leg_length = mech.hip_height / gait_table.stance_height_ratio
 		var period: float = gait_table.rel_stride(gait_table.fr_top()) * mech.gait_height / mech.v_top
 		cadence = 1.0 / period if period > 0.0 else 0.0
@@ -120,6 +120,34 @@ static func speed_factor(mass: float, tuning: Dictionary) -> float:
 		return 1.0
 	var x := pow(mass / float(size["ref_kg"]), -float(size["power"]))
 	return (1.0 - exp(-x)) / (1.0 - exp(-1.0))
+
+
+## The top-speed multiplier the swim parts leave on land (see the header): 1 without them or without a "land_drag"
+## tuning block.
+static func land_factor(body: RefCounted, tuning: Dictionary) -> float:
+	var drag: Dictionary = tuning.get("land_drag", {})
+	if drag.is_empty():
+		return 1.0
+	var loss := 0.0
+	for p in _swim_parts_of(body, drag):
+		var l := float(drag["per_part"][p["type"]]) * pow(float(p["scale"]) / 1000.0, float(drag["scale_power"]))
+		loss += 2.0 * l if p["mirror"] else l
+	return maxf(float(drag["floor"]), 1.0 - loss)
+
+
+## How many swim parts (tuning land_drag.per_part types) the body wears, a mirrored part counting twice.
+static func swim_parts(body: RefCounted, tuning: Dictionary) -> int:
+	var n := 0
+	for p in _swim_parts_of(body, tuning.get("land_drag", {})):
+		n += 2 if p["mirror"] else 1
+	return n
+
+
+## The body's parts that drag on land under a land_drag tuning block (see land_factor).
+static func _swim_parts_of(body: RefCounted, drag: Dictionary) -> Array:
+	var per_part: Dictionary = drag.get("per_part", {})
+	var paired_only: Array = drag.get("paired_only", [])
+	return body.parts.filter(func(p): return per_part.has(p["type"]) and (p["mirror"] or not paired_only.has(p["type"])))
 
 
 ## The bite multiplier for a body of `mass` kg: (mass / strength.ref_kg)^strength.mass_power, kept within
