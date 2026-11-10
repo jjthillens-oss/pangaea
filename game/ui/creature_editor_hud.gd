@@ -96,6 +96,10 @@ var test_drive_button: Button
 var undo_button: Button
 var redo_button: Button
 var _wired := false
+## Editor-ease (game/ui/editor_ease/creature_hud_ease.gd): the tooltips, stats table, part card, placement line and
+## Symmetry toggle, built in code by one child node; the hooks below only forward to it.
+const EditorEase := preload("res://game/ui/editor_ease/creature_hud_ease.gd")
+var editor_ease: Node
 
 
 func _ready() -> void:
@@ -129,6 +133,9 @@ func wire() -> void:
 		b.pressed.connect(func(): action.emit(name.to_lower()))
 	test_drive_button.focus_mode = Control.FOCUS_NONE
 	test_drive_button.toggled.connect(func(on: bool): test_drive_toggled.emit(on))
+	editor_ease = EditorEase.new()
+	add_child(editor_ease)
+	editor_ease.attach(self)
 
 
 ## Builds the palette: `tools` are the part types in order, `costs` the editor costs (CreatureData.editor_costs()),
@@ -173,6 +180,8 @@ func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {
 		_swatches.append(b)
 	_build_hex_entry()
 	_build_coverings(coverings)
+	if editor_ease:
+		editor_ease.on_setup(tools, costs, roles)
 
 
 ## The "SKIN COVERING" caption and its row of toggles, placed after the swatches once and refilled on each setup.
@@ -292,6 +301,8 @@ func set_tool(type: String) -> void:
 		(_tool_buttons[t] as Button).set_pressed_no_signal(t == type)
 	title_text.text = "Creature editor" if type == "" else "Creature editor   ·   %s tool" % (
 			"limb" if type == "limb" else String(type).capitalize().to_lower())
+	if editor_ease:
+		editor_ease.on_tool(type)
 
 
 func set_color(color: Color) -> void:
@@ -367,11 +378,15 @@ func set_points(points: int, cost: int, affordable: bool) -> void:
 
 func set_stats(lines: PackedStringArray) -> void:
 	stats_text.text = "\n".join(lines)
+	if editor_ease:
+		editor_ease.on_stats(lines)
 
 
 func set_undo_redo(can_undo: bool, can_redo: bool) -> void:
 	undo_button.disabled = not can_undo
 	redo_button.disabled = not can_redo
+	if editor_ease:
+		editor_ease.on_undo_redo(can_undo, can_redo)
 
 
 ## The refusal line: shown while `text` is not empty.
@@ -505,6 +520,17 @@ func set_tool_icon(type: String, texture: Texture2D) -> void:
 func tool_icon(type: String) -> Texture2D:
 	var b: Button = _tool_buttons.get(type)
 	return b.icon if b != null else null
+
+
+## The palette button of a tool ("" Select, "limb", or a part type), or null.
+func tool_button(type: String) -> Button:
+	return _tool_buttons.get(type)
+
+
+## Shows the symmetry state on its toggle without emitting symmetry_toggled.
+func set_symmetry(on: bool) -> void:
+	if editor_ease:
+		editor_ease.show_symmetry(on)
 
 
 ## The head shape sliders under the stats, built once: `ranges` is key -> [min, max] per mille (the body rules'
