@@ -329,7 +329,8 @@ func _build_hex_entry() -> void:
 	hex_field.text_submitted.connect(func(text: String):
 		_hex_sent = text
 		hex_entered.emit(text)
-		hex_field.release_focus())
+		if hex_field.is_inside_tree():
+			hex_field.release_focus())
 	hex_field.focus_exited.connect(func():
 		if hex_field.text != _hex_shown and hex_field.text != _hex_sent:
 			_hex_sent = hex_field.text
