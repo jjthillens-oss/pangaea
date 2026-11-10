@@ -53,3 +53,33 @@ static func warnings(desc: RefCounted, part_rules: Dictionary) -> PackedStringAr
 			out.append("part %s needs the missing part type %s; it is kept as a placeholder" % [String(p["id"]),
 					String(p["type"])])
 	return out
+
+
+## The most type names notice() lists before "and N more".
+const NOTICE_NAMES_MAX := 3
+
+
+## The plain-words notice the player sees when a body opens with `missing_types` (missing()'s list): how many part
+## types this version does not have, the first `cap` names, and what happens to them. Empty when nothing is missing.
+static func notice(missing_types: PackedStringArray, cap: int = NOTICE_NAMES_MAX) -> String:
+	var n := missing_types.size()
+	if n == 0:
+		return ""
+	var shown := Array(missing_types.slice(0, maxi(1, cap)))
+	var names := ", ".join(PackedStringArray(shown))
+	if n > shown.size():
+		names += " and %d more" % (n - shown.size())
+	if n == 1:
+		return "This creature uses 1 part this version does not have (%s). It is kept in the save and left out for now." % names
+	return "This creature uses %d parts this version does not have (%s). They are kept in the save and left out for now." % [n, names]
+
+
+## notice() for a body.
+static func notice_for(desc: RefCounted, part_rules: Dictionary, cap: int = NOTICE_NAMES_MAX) -> String:
+	return notice(missing(desc, part_rules), cap)
+
+
+## What a part is called in a list or a selection line: its type, or "Missing part: <type>" for a placeholder.
+static func part_label(part: Dictionary, part_rules: Dictionary) -> String:
+	var type := String(part.get("type", ""))
+	return "Missing part: %s" % type if is_placeholder(part, part_rules) else type

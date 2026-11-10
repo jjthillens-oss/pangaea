@@ -237,6 +237,36 @@ func setup(body: RefCounted, points: int) -> void:
 	hud.set_covering(skin_covering)
 	_frame_body()
 	_rebuild()
+	_show_missing_notice()
+
+
+## IB-31 (PROPOSED): a body with parts this build does not have opens with a notice on the refusal line, held for
+## MISSING_NOTICE_S (the next refusal or that time dismisses it); the stats panel keeps a "Missing parts" line.
+const MISSING_NOTICE_S := 12.0
+const PartManifest := preload("res://game/domain/creature/part_manifest.gd")
+
+
+func missing_notice() -> String:
+	return PartManifest.notice_for(session.working, part_rules) if session != null else ""
+
+
+func _show_missing_notice() -> void:
+	var text := missing_notice()
+	if text == "":
+		return
+	_refuse(text)
+	_refusal_t = REFUSAL_S - MISSING_NOTICE_S
+
+
+## The selection line's name for the selected thing: "part p_3", or "Missing part: <type> (p_3)" for a placeholder.
+func _selected_label() -> String:
+	if selected.is_empty():
+		return "-"
+	if selected["kind"] in ["part", "turn"]:
+		for p in session.working.parts:
+			if p["id"] == selected["id"] and PartManifest.is_placeholder(p, part_rules):
+				return "%s (%s)" % [PartManifest.part_label(p, part_rules), selected["id"]]
+	return "%s %s" % [selected["kind"], selected["id"]]
 
 
 func working_body() -> RefCounted:
@@ -1163,7 +1193,10 @@ func _refresh_hud() -> void:
 		var s: Dictionary = _stats_script.of(session.working, part_rules, CreatureData.gait_table(), _stage_tuning)
 		lines.append("Speed  %.1f m/s   ·   health  %d" % [float(s.get("speed_mps", 0.0)), int(s.get("max_health", 0))])
 		lines.append("Bite  %d   ·   sight  %.0f m" % [int(s.get("bite_power", 0)), float(s.get("sight_m", 0.0))])
-	lines.append("Selected  %s" % (("%s %s" % [selected["kind"], selected["id"]]) if not selected.is_empty() else "-"))
+	var gone := PartManifest.placeholder_ids(session.working, part_rules).size()
+	if gone > 0:
+		lines.append("Missing parts  %d (kept in the save)" % gone)
+	lines.append("Selected  %s" % _selected_label())
 	hud.set_stats(lines)
 	hud.set_undo_redo(not session._undo.is_empty(), not session._redo.is_empty())
 	hud.set_head_shape(session.head_shape())

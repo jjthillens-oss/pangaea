@@ -316,11 +316,18 @@ func set_part_mirror(part_id: String, mirror: bool) -> Dictionary:
 	return _set_part(part_id, {"mirror": mirror}, ["mirror"])
 
 
+## A placeholder part (a type this build has no rules for, IB-31) cannot be moved, turned or scaled: its limits are
+## unknown here. It can still be removed, and that can be undone.
+const MISSING_PART_TEXT := "This part is missing from this version; it can be removed but not changed"
+
+
 func _set_part(part_id: String, values: Dictionary, allowed: Array) -> Dictionary:
 	return _apply(func(d):
 		var p := _part(d, part_id)
 		if p.is_empty():
 			return "no such part"
+		if not part_rules.has(String(p["type"])):
+			return MISSING_PART_TEXT
 		for k in values:
 			if not allowed.has(k):
 				return "%s cannot be set here" % k
@@ -391,7 +398,7 @@ func _priced(d: RefCounted) -> Dictionary:
 		for j in limb["joints"]:
 			out[j["id"]] = [int(costs["limb_joint"]), 2 if limb["mirror"] else 1]
 	for p in d.parts:
-		var price := int((costs["part"] as Dictionary).get(p["type"], costs["part_default"]))
+		var price := int((costs.get("part", {}) as Dictionary).get(p["type"], costs.get("part_default", 0)))
 		out[p["id"]] = [price, 2 if p["mirror"] else 1]
 	return out
 
