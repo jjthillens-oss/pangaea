@@ -443,7 +443,8 @@ func _hunger(c: Dictionary) -> void:
 	var cfg: Dictionary = tuning.get("hunger", {})
 	if cfg.is_empty() or not c["alive"] or not c["stats"]["has_legs"]:
 		return
-	c["fullness"] = maxf(0.0, c["fullness"] - DT / float(cfg["empty_s"]))
+	# A large body empties faster and a small one slower (size tiers, IB-30, PROPOSED); medium is 1.0.
+	c["fullness"] = maxf(0.0, c["fullness"] - DT * float(c["stats"].get("energy_use_factor", 1.0)) / float(cfg["empty_s"]))
 	if c["fullness"] <= 0.0:
 		var regen := float(tuning["health"]["regen_per_s"]) * DT
 		c["health"] -= regen + float(cfg["starve_damage_per_s"]) * DT
