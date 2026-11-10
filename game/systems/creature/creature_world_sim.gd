@@ -557,9 +557,17 @@ func _sing(events: Array, fresh: bool, display := "sing") -> void:
 				"did": display})
 		return
 	var needed := float(social["friend_at"])
-	target["friendship"] = minf(needed, float(target["friendship"]) + float(me["stats"].get("charm", 1.0)))
+	# The pack joins in (Spore's pack bonus): each ally close by adds per_ally_charm, the first ally_cap of them.
+	var pack := []
+	var pack_m := float(social.get("pack_m", 0.0))
+	for r in rivals:
+		if r["alive"] and r["ally"] and pack.size() < int(social.get("ally_cap", 0)) \
+				and _ground_distance(me["position"], r["position"]) <= pack_m:
+			pack.append(r["id"])
+	var charm := float(me["stats"].get("charm", 1.0)) + float(social.get("per_ally_charm", 0.0)) * pack.size()
+	target["friendship"] = minf(needed, float(target["friendship"]) + charm)
 	events.append({"kind": "charmed", "who": target["id"], "name": _killer_name(target["id"]), "did": display,
-			"friendship": target["friendship"], "needed": needed})
+			"friendship": target["friendship"], "needed": needed, "pack": pack})
 	if target["friendship"] >= needed:
 		target["ally"] = true
 		target["memory"] = Brain.fresh_memory(Rules.forward(target["yaw"]))

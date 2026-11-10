@@ -111,6 +111,9 @@ var player_rig: Node3D
 var stance := "friend"
 ## A display being acted out: {id: {kind, t}} for the player and a creature answering it, DISPLAY_ANIM_S long.
 var _acting := {}
+## The display sounds (scenes/audio/creature_display_audio.gd), made on the first display.
+var display_audio: Node
+const DISPLAY_AUDIO := "res://game/scenes/audio/creature_display_audio.gd"
 var rival_rigs := {}
 var notice := ""
 var mate_beat_s := MATE_BEAT_S
@@ -286,6 +289,14 @@ static func display_offset(kind: String, u: float) -> Transform3D:
 	return Transform3D.IDENTITY
 
 
+func _sound(cue: String, pitch := 1.0) -> void:
+	if display_audio == null:
+		display_audio = (load(DISPLAY_AUDIO) as GDScript).new()
+		display_audio.name = "DisplayAudio"
+		add_child(display_audio)
+	display_audio.play(cue, pitch)
+
+
 func _act(id: String, kind: String) -> void:
 	_acting[id] = {"kind": kind, "t": 0.0}
 
@@ -346,13 +357,19 @@ func _on_event(e: Dictionary) -> void:
 			notice = CHARMED_NOTICE % [String(e.get("did", "sing")), _the(String(e["name"])), int(e["friendship"]), int(e["needed"])]
 			_act(Sim.PLAYER_ID, String(e.get("did", "sing")))
 			_act(String(e["who"]), String(e.get("did", "sing")))   # it joins in
+			for ally_id in e.get("pack", []):
+				_act(String(ally_id), String(e.get("did", "sing")))   # and so does the pack
+			# Each step of a courtship sounds a little higher, so progress is heard.
+			_sound(String(e.get("did", "sing")), 1.0 + 0.06 * float(e["friendship"]))
 			hud.show_notice(notice)
 		"befriended":
-			notice = BEFRIENDED_NOTICE % String(e["name"]).capitalize()
+			notice = BEFRIENDED_NOTICE % _the(String(e["name"])).capitalize()
+			_sound("befriended")
 			hud.show_notice(notice)
 		"missed":
 			notice = MISSED_NOTICE % [_the(String(e["name"])), String(e["wanted"])]
 			_act(Sim.PLAYER_ID, String(e["did"]))
+			_sound("missed")
 			hud.show_notice(notice)
 		"snubbed":
 			notice = SNUBBED_NOTICE
