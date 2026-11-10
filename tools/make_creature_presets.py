@@ -153,7 +153,7 @@ def monkey():
            end="hand_primate", end_scale=1500)
     b.limb(6, (100, 290, 90, 76), (150, 170, 20, 60), (140, -20, 100, 48), (140, -70, 50, 44), end="foot_primate",
            end_scale=1200)
-    b.part("maw", u=0, ring=500, elev=30, scale=650)
+    b.part("mouth_grin", u=0, ring=500, elev=30, scale=1000)
     b.part("muzzle_primate", u=0, ring=0, elev=40, scale=1300)
     b.part("eye_round", u=b.u(2) // 2, ring=130, scale=850, mirror=True)
     b.part("ear_round", u=b.u(2), ring=260, scale=1700, mirror=True)
@@ -188,10 +188,10 @@ def longneck():
            end="hoof", end_scale=2300)
     b.limb(10, (105, 170, 150, 88), (140, -30, 175, 76), (130, -260, 150, 64), (130, -300, 145, 62), end="hoof",
            end_scale=2300)
-    b.part("beak", u=0, ring=500, elev=20, scale=800)
-    b.part("eye_round", u=b.u(2), ring=180, scale=650, mirror=True)
-    b.part("horn_nose", u=b.u(2) + 10, ring=0, scale=700)
-    b.part("ear_pointed", u=b.u(2) + 20, ring=230, scale=900, mirror=True)
+    b.part("muzzle_grazer", u=0, ring=500, elev=10, scale=800)
+    b.part("eye_goat", u=b.u(2), ring=180, scale=650, mirror=True)
+    b.part("antler", u=b.u(2) + 10, ring=70, scale=900, mirror=True)
+    b.part("ear_long", u=b.u(2) + 20, ring=230, scale=800, mirror=True)
     b.look(0, snout=1300, height=900)
     return b
 
@@ -206,7 +206,7 @@ def tortoise():
     b.part("beak", u=0, ring=500, elev=15, scale=1000)
     b.part("eye", u=b.u(2), ring=190, scale=800, mirror=True)
     for v, sc in ((5, 900), (6, 950), (7, 800)):
-        b.part("spike", u=b.u(v), ring=0, scale=sc)
+        b.part("back_plate", u=b.u(v), ring=0, scale=sc)
     b.part("club_tail", u=1000, ring=0, scale=1800)
     b.look(2, snout=1100, brow=400)
     return b
@@ -241,6 +241,7 @@ def stalker():
     b.part("mandibles", u=0, ring=500, elev=25, scale=1100)
     b.part("eye_stalk", u=b.u(2), ring=80, scale=1400, mirror=True)
     b.part("eye_cluster", u=b.u(1) + 20, ring=0, scale=800)
+    b.part("tail_stinger", u=1000, ring=0, scale=1500)
     b.look(1, height=850)
     return b
 
@@ -266,11 +267,11 @@ def strider():
             (280, -20, 125), (285, 100, 112), (305, 210, 70), (330, 290, 42))
     b.limb(7, (100, 240, 20, 72), (135, 40, -40, 56), (125, -300, 80, 40), (125, -420, 20, 34), end="foot_talon",
            end_scale=1000)
-    b.part("beak", u=0, ring=500, elev=10, scale=850)
-    b.part("eye_round", u=b.u(2), ring=180, scale=700, mirror=True)
+    b.part("beak_hooked", u=0, ring=500, elev=10, scale=850)
+    b.part("eye_beady", u=b.u(2), ring=180, scale=1100, mirror=True)
     b.part("crest", u=b.u(2) + 15, ring=0, scale=800)
     b.part("wing", u=b.u(7), ring=210, scale=1200, mirror=True)
-    b.part("tail_fluke", u=1000, ring=0, scale=1300)
+    b.part("feather_fan", u=b.u(9), ring=0, scale=1500)
     b.look(0, snout=1150, height=1100)
     return b
 
@@ -284,8 +285,8 @@ def prowler():
            end="foot_paw", end_scale=1200)
     b.limb(7, (100, 180, 90, 75), (130, 20, 150, 62), (120, -150, 100, 48), (120, -215, 90, 44), end="foot_paw",
            end_scale=1200)
-    b.part("maw", u=0, ring=500, elev=25, scale=1050)
-    b.part("eye_slit", u=b.u(2), ring=160, scale=1000, mirror=True)
+    b.part("muzzle_fang", u=0, ring=500, elev=15, scale=1150)
+    b.part("eye_brow", u=b.u(2), ring=160, scale=1000, mirror=True)
     b.part("ear_pointed", u=b.u(2), ring=230, scale=1300, mirror=True)
     b.part("mane", u=b.u(3), ring=0, scale=1500)
     b.part("tail_bushy", u=1000, ring=0, scale=1500)

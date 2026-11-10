@@ -135,6 +135,10 @@ ROLE = {
     "wing_dragon": "detail", "dorsal_spine": "detail",
     "gill_fan": "detail", "lure": "detail", "barbels": "detail",
     "ear_pointed": "detail", "tail_bushy": "detail", "mane": "detail",
+    "muzzle_fang": "mouth", "muzzle_grazer": "mouth", "beak_hooked": "mouth", "mouth_grin": "mouth", "mouth_tendrils": "mouth",
+    "eye_goat": "eye", "eye_beady": "eye", "eye_brow": "eye",
+    "antler": "weapon", "tail_stinger": "weapon",
+    "back_plate": "detail", "feather_fan": "detail", "ear_long": "detail",
 }
 
 
@@ -4595,6 +4599,890 @@ def build_mane():
 
 
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
+# --- Set 9 (2026-11-10): more faces --------------------------------------------------------------
+# Thirteen parts for the editor's thin categories (PROPOSED; owner direction 2026-11-10: "not a lot of options",
+# match Spore's creature creator): five mouths, three eyes, two weapons and three details. Mouths are authored for
+# the forward-cone frame: +Z out of the snout, +Y the upper side, X across the face.
+
+def _round_end(t, t0):
+    """1 up to t0, then a quarter-circle down to 0 at t = 1: a jaw's blunt end."""
+    return 1.0 if t < t0 else math.sqrt(max(0.0, 1.0 - ((t - t0) / (1.0 - t0)) ** 2))
+
+
+def _superellipse(c, s, h, w, p=2.0):
+    """A superellipse ring's radius at (cos, sin): half-size h on the cos axis, w on the sin axis; p > 2 is boxier."""
+    return 1.0 / ((abs(c) / h) ** p + (abs(s) / w) ** p) ** (1.0 / p)
+
+
+def _jaw_half(sign, length, hinge_z, width_at, height_at, gap=0.004, inner=0.45, box=2.0, steps=14, sides=24):
+    """One jaw of a muzzle running out along +Z (sign +1: the upper, +Y one). width_at(t) and height_at(t) are
+    half-sizes; the side facing the other jaw is flattened to `inner` of the height and lies on y = sign * gap / 2,
+    so the closed jaws meet flat. Returns verts, faces and per-face 1 on that inner (gum) face, else 0."""
+    def centre(t):
+        return sign * (gap / 2 + inner * height_at(t))
+
+    path = [Vector((0.0, centre(i / steps), hinge_z + (length - hinge_z) * (i / steps))) for i in range(steps + 1)]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = i / steps
+        c, s = math.cos(a), math.sin(a)
+        h = height_at(t) * (inner if c * sign < 0 else 1.0)
+        return _superellipse(c, s, max(h, 1e-4), max(width_at(t), 1e-4), box)
+
+    v, f, _ = _tube(path, radius_at, sides)
+    gum = []
+    for face in f:
+        y = sum(v[k][1] for k in face) / len(face)
+        z = sum(v[k][2] for k in face) / len(face)
+        t = min(1.0, max(0.0, (z - hinge_z) / (length - hinge_z)))
+        gum.append(1 if (y - centre(t)) * sign < -0.6 * inner * height_at(t) else 0)
+    return v, f, gum
+
+
+def _collar(y0, half_w, half_h, sink, top=0.02, box=2.0):
+    """The fleshy root a muzzle grows from: a ring round (0, y0) flaring a little as it goes under the skin."""
+    zs = (top, 0.006, -0.4 * sink, -sink)
+    path = [Vector((0.0, y0, z)) for z in zs]
+    return _tube(path, lambda i, a: _superellipse(math.cos(a), math.sin(a), half_h * (1.0 + 0.07 * i), half_w * (1.0 + 0.07 * i), box), 24)[:2]
+
+
+def _spike_piece(verts, fcs, root, d, length, r0, bend=Vector((0.0, 0.0, 0.0)), sides=7, power=0.8):
+    """A pointed tooth, fang or tine from `root` along `d`, curving toward `bend`. Returns the new face indices."""
+    ks = (0.0, 0.25, 0.5, 0.75, 1.0)
+    path = [root + d * (length * k) + bend * (length * k * k) for k in ks]
+    v, f, _ = _tube(path, lambda i, a: 0.0 if i == 4 else r0 * (1.0 - ks[i]) ** power, sides)
+    return bc.append(verts, fcs, v, f)
+
+
+def _flat_tube(path, wide, half_w, half_t, sides=10, dent=0.0):
+    """A blade, feather or ear along `path` (Vectors): each ring is an ellipse `half_w(i)` across `wide` and
+    `half_t(i)` thick; with `dent`, the +normal face is pressed in that deep (as a share of the thickness) to make a
+    cupped section. The start is capped and a zero width closes the end to a point. Returns verts, faces and each
+    face's (ring, side) pair, sides counted round from +wide through +normal."""
+    verts, faces, rings, where = [], [], [], []
+    n = len(path)
+    for i, p in enumerate(path):
+        t = (path[min(i + 1, n - 1)] - path[max(i - 1, 0)]).normalized()
+        w = (wide - t * wide.dot(t)).normalized()
+        nrm = t.cross(w).normalized()
+        if half_w(i) <= 0.0:
+            rings.append([len(verts)])
+            verts.append(tuple(p))
+            continue
+        ring = []
+        for j in range(sides):
+            a = 2.0 * math.pi * j / sides
+            s = math.sin(a)
+            off = half_t(i) * (s * (1.0 - (1.0 + dent) * s) if s > 0.0 and dent > 0.0 else s)
+            ring.append(len(verts))
+            verts.append(tuple(p + w * (half_w(i) * math.cos(a)) + nrm * off))
+        rings.append(ring)
+    cap = len(verts)
+    verts.append(tuple(path[0]))
+    for j in range(sides):
+        faces.append((cap, rings[0][(j + 1) % sides], rings[0][j]))
+        where.append((0, j))
+    for i in range(n - 1):
+        a, b = rings[i], rings[i + 1]
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a[j], a[k], b[0]) if len(b) == 1 else (a[j], a[k], b[k], b[j]))
+            where.append((i, j))
+    return verts, faces, where
+
+
+def _gum_material(name):
+    sh = sf.Shader(name)
+    wr = sh.noise(160.0, 3.0)
+    sh.bump(wr, 0.3, 0.0008)
+    return sh.out(_grey(sh, sh.remap(wr, 0.3, 0.7), 0.75), 0.35)
+
+
+def _tooth_material(name):
+    sh = sf.Shader(name)
+    streak = sh.noise(120.0, 3.0, vector=mp._stretched(sh, (4.0, 4.0, 0.4)))
+    sh.bump(streak, 0.15, 0.0005)
+    return sh.out(_grey(sh, sh.remap(streak, 0.2, 0.8, 0.8, 1.0), 0.8), 0.2)
+
+
+def _dark_material(name, rough=0.3):
+    sh = sf.Shader(name)
+    return sh.out(_grey(sh, sh.remap(sh.noise(200.0, 2.0), 0.3, 0.7), 0.85), rough)
+
+
+def _hinge_fn(hinge_z, degrees, hinge_y=0.0):
+    """Swings everything beyond z = hinge_z about the X axis through (hinge_y, hinge_z): positive degrees drop it
+    toward -Y (a lower jaw opening), easing in over the first centimetre."""
+    def swing(co):
+        if co.z <= hinge_z:
+            return co
+        a = math.radians(degrees) * min(1.0, (co.z - hinge_z) / 0.01)
+        y, z = co.y - hinge_y, co.z - hinge_z
+        return Vector((co.x, hinge_y + y * math.cos(a) - z * math.sin(a), hinge_z + y * math.sin(a) + z * math.cos(a)))
+    return swing
+
+
+def _named(mats, *names):
+    for mat, name in zip(mats, names):
+        mat.name = name
+
+
+def _mouth_record(part_type, purpose, rules, handles, note, paint, baked):
+    rules["handles"] = handles
+    if note:
+        rules["handles_note"] = note
+    return {"purpose": purpose, "category": "part", "part_type": part_type, "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": paint, "revision": 1, **baked}
+
+
+# --- Fanged muzzle (mouth) ------------------------------------------------------------------------
+
+def build_muzzle_fang():
+    """A hunter's short muzzle: a broad upper jaw with a dark nose pad, overhanging a narrower lower jaw, two long
+    sabre fangs dropping outside it and small teeth between. H1_Open drops the lower jaw, H2_Fangs lengthens the
+    fangs."""
+    L, hinge, sink = 0.115, 0.008, 0.025
+
+    def up_w(t):
+        return 0.046 * (1.0 - 0.3 * t ** 1.3) * _round_end(t, 0.78)
+
+    def up_h(t):
+        return 0.03 * (1.0 - 0.22 * t) * _round_end(t, 0.72)
+
+    def lo_w(t):
+        return 0.034 * (1.0 - 0.3 * t) * _round_end(t, 0.8)
+
+    def lo_h(t):
+        return 0.017 * (1.0 - 0.3 * t) * _round_end(t, 0.75)
+
+    verts, fcs, mi = [], [], []
+    v, f, gum = _jaw_half(1.0, L, hinge, up_w, up_h, box=2.4)
+    bc.append(verts, fcs, v, f)
+    mi += gum
+    cv, cf = _collar(0.01, 0.05, 0.04, sink)
+    bc.append(verts, fcs, cv, cf)
+    mi += [0] * len(cf)
+    nv, nf = _blob(Vector((0.0, 0.03, L * 0.93)), 0.018, 0.012, 0.014, sub=2)
+    bc.append(verts, fcs, nv, nf)
+    mi += [3] * len(nf)
+    fangs = []
+    for side in (1.0, -1.0):
+        root = Vector((side * 0.031, 0.006, L * 0.66))
+        fangs.append(root)
+        added = _spike_piece(verts, fcs, root, Vector((side * 0.06, -1.0, 0.12)).normalized(), 0.062, 0.0078, Vector((0.0, 0.0, -0.18)), sides=8, power=0.7)
+        mi += [2] * len(added)
+        for z, x, length in ((0.3, 0.034, 0.011), (0.42, 0.034, 0.012), (0.54, 0.033, 0.011)):
+            added = _spike_piece(verts, fcs, Vector((side * x, 0.004, L * z)), Vector((0.0, -1.0, 0.0)), length, 0.0045, sides=6)
+            mi += [2] * len(added)
+        for x in (0.007, 0.019):
+            added = _spike_piece(verts, fcs, Vector((side * x, 0.004, L * (0.93 - 2.2 * x))), Vector((0.0, -1.0, 0.1)).normalized(), 0.009, 0.004, sides=6)
+            mi += [2] * len(added)
+    mats = [_fur_material("M_MuzzleFangSkinProc"), _gum_material("M_MuzzleFangGumProc"), _tooth_material("M_MuzzleFangToothProc"),
+            _pad_material("M_MuzzleFangNoseProc")]
+    upper = bc.mesh_object("MuzzleFang", verts, fcs, mats, mi)
+    lverts, lfcs, lmi = [], [], []
+    LL = L * 0.84
+    v, f, gum = _jaw_half(-1.0, LL, hinge, lo_w, lo_h, box=2.2)
+    bc.append(lverts, lfcs, v, f)
+    lmi += gum
+    for side in (1.0, -1.0):
+        added = _spike_piece(lverts, lfcs, Vector((side * 0.02, -0.004, LL * 0.84)), Vector((side * 0.1, 1.0, 0.1)).normalized(), 0.02, 0.0052, sides=7)
+        lmi += [2] * len(added)
+    lower = bc.mesh_object("Lower", lverts, lfcs, mats[:3], lmi, parent=upper)
+    _named(mats, "M_MuzzleFangSkin", "M_MuzzleFangGum", "M_MuzzleFangTooth", "M_MuzzleFangNose")
+    baked = _bake([upper, lower], "PartMuzzleFang", {"M_MuzzleFangSkin": sf.tint(_lin("#A8825E")), "M_MuzzleFangGum": sf.tint(_lin("#B0606A")),
+                                                     "M_MuzzleFangTooth": sf.tint(_lin("#F0E8D2")), "M_MuzzleFangNose": sf.tint(_lin("#2E2422"))})
+    pts = _check_pivot("muzzle_fang", sink)
+    foot = _footprint(pts)
+
+    def longer(co):
+        for root in fangs:
+            if co.y < root.y - 0.002 and math.hypot(co.x - root.x, co.z - root.z) < 0.02:
+                return Vector((co.x, root.y + (co.y - root.y) * 1.5, co.z))
+        return co
+
+    handles = _shape_keys(lower, [("H1_Open", _hinge_fn(hinge, 30.0), "the lower jaw drops 30 degrees about the hinge")])
+    handles += _shape_keys(upper, [("H2_Fangs", longer, "the two sabre fangs 50% longer")])
+    rules = _rules("muzzle_fang", round(foot + 0.001, 3), sink, "forward_cone", ["spine"], 40, 30, centerline="required")
+    return _mouth_record("muzzle_fang", "Creature mouth part (PROPOSED): a hunter's short furred muzzle with a dark nose pad, two long sabre fangs outside the lower jaw and small teeth between; the lower jaw opens on a shape key.",
+                         rules, handles, "H1 is on Lower, H2 on MuzzleFang.",
+                         {"M_MuzzleFangSkin": 0.85, "M_MuzzleFangGum": 0.0, "M_MuzzleFangTooth": 0.0, "M_MuzzleFangNose": 0.0}, baked)
+
+
+# --- Grazer muzzle (mouth) ------------------------------------------------------------------------
+
+def build_muzzle_grazer():
+    """A grazer's long deep muzzle with a blunt squared end, two wide nostrils on top of it, soft lips and a row
+    of flat cropping teeth in each jaw. H1_Open drops the lower jaw, H2_Length lengthens the muzzle."""
+    L, hinge, sink = 0.15, 0.008, 0.025
+
+    def up_w(t):
+        return 0.034 * (1.0 + 0.22 * t * t) * _round_end(t, 0.86)
+
+    def up_h(t):
+        return 0.031 * (1.0 - 0.12 * t) * _round_end(t, 0.84)
+
+    def lo_w(t):
+        return 0.03 * (1.0 + 0.16 * t * t) * _round_end(t, 0.86)
+
+    def lo_h(t):
+        return 0.019 * (1.0 - 0.1 * t) * _round_end(t, 0.82)
+
+    verts, fcs, mi = [], [], []
+    v, f, gum = _jaw_half(1.0, L, hinge, up_w, up_h, box=3.0)
+    bc.append(verts, fcs, v, f)
+    mi += gum
+    cv, cf = _collar(0.012, 0.039, 0.042, sink, box=2.6)
+    bc.append(verts, fcs, cv, cf)
+    mi += [0] * len(cf)
+    for side in (1.0, -1.0):
+        nv, nf = _blob(Vector((side * 0.019, 0.037, L * 0.9)), 0.0085, 0.006, 0.011, sub=2)
+        bc.append(verts, fcs, nv, nf)
+        mi += [3] * len(nf)
+        for k in range(3):
+            x = side * (0.006 + 0.011 * k)
+            tv, tf = _blob(Vector((x, 0.0, L * (0.955 - 0.012 * k * k))), 0.0048, 0.007, 0.004, sub=1, power=0.6)
+            bc.append(verts, fcs, tv, tf)
+            mi += [2] * len(tf)
+    mats = [_skin_material("M_MuzzleGrazerSkinProc", 260.0, 0.78, 0.65, 0.25), _gum_material("M_MuzzleGrazerGumProc"),
+            _tooth_material("M_MuzzleGrazerToothProc"), _dark_material("M_MuzzleGrazerNostrilProc", 0.45)]
+    upper = bc.mesh_object("MuzzleGrazer", verts, fcs, mats, mi)
+    lverts, lfcs, lmi = [], [], []
+    LL = L * 0.95
+    v, f, gum = _jaw_half(-1.0, LL, hinge, lo_w, lo_h, box=2.6)
+    bc.append(lverts, lfcs, v, f)
+    lmi += gum
+    for side in (1.0, -1.0):
+        for k in range(3):
+            tv, tf = _blob(Vector((side * (0.0055 + 0.01 * k), -0.001, LL * (0.95 - 0.012 * k * k))), 0.0044, 0.0065, 0.004, sub=1, power=0.6)
+            bc.append(lverts, lfcs, tv, tf)
+            lmi += [2] * len(tf)
+    lower = bc.mesh_object("Lower", lverts, lfcs, mats[:3], lmi, parent=upper)
+    _named(mats, "M_MuzzleGrazerSkin", "M_MuzzleGrazerGum", "M_MuzzleGrazerTooth", "M_MuzzleGrazerNostril")
+    baked = _bake([upper, lower], "PartMuzzleGrazer", {"M_MuzzleGrazerSkin": sf.tint(_lin("#B49A82")), "M_MuzzleGrazerGum": sf.tint(_lin("#B66E72")),
+                                                       "M_MuzzleGrazerTooth": sf.tint(_lin("#ECE2C6")), "M_MuzzleGrazerNostril": sf.tint(_lin("#2A1E1E"))})
+    pts = _check_pivot("muzzle_grazer", sink)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.02:
+            co.z = 0.02 + (co.z - 0.02) * 1.3
+        return co
+
+    def open_long(fn):
+        return lambda co: fn(co)
+
+    handles = _shape_keys(lower, [("H1_Open", _hinge_fn(hinge, 24.0), "the lower jaw drops 24 degrees about the hinge"),
+                                  ("H2_Length", length, "the muzzle 30% longer")])
+    _shape_keys(upper, [("H2_Length", length, "")])
+    rules = _rules("muzzle_grazer", round(foot + 0.001, 3), sink, "forward_cone", ["spine"], 40, 30, centerline="required")
+    return _mouth_record("muzzle_grazer", "Creature mouth part (PROPOSED): a grazer's long deep muzzle with a blunt squared end, two wide nostrils, soft lips and flat cropping teeth; the lower jaw opens on a shape key.",
+                         rules, handles, "H1 is on Lower, H2 on MuzzleGrazer and Lower.",
+                         {"M_MuzzleGrazerSkin": 0.85, "M_MuzzleGrazerGum": 0.0, "M_MuzzleGrazerTooth": 0.0, "M_MuzzleGrazerNostril": 0.0}, baked)
+
+
+# --- Hooked beak (mouth) --------------------------------------------------------------------------
+
+def build_beak_hooked():
+    """A raptor's beak: a deep keeled upper mandible arching forward and hooking down past a short scoop of a
+    lower one, dark at the tips, under a fleshy cere with two nostrils. H1_Open drops the lower mandible,
+    H2_Hook curls the hook further down."""
+    L, hinge, sink = 0.13, 0.008, 0.02
+    steps, sides = 18, 20
+    ts = [i / steps for i in range(steps + 1)]
+    path = [Vector((0.0, 0.017 - 0.004 * t - 0.062 * t ** 3.4, hinge + (L - hinge) * math.sin(t * 1.75) / math.sin(1.75))) for t in ts]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = ts[i]
+        c, s = math.cos(a), math.sin(a)
+        # The ring's cos axis starts on +Y and is carried along the path; the under side is flattened, the top keeled.
+        h = (0.021 * (1.0 - t) ** 0.75 + 0.0012) * (0.45 if c < 0 else 1.0)
+        return _superellipse(c, s, h, 0.03 * (1.0 - t) ** 0.8 + 0.001, 1.7 if c > 0 else 2.0)
+
+    verts, fcs, ring = _tube(path, radius_at, sides)
+    mi = [1 if i >= int(steps * 0.6) else 0 for i in ring]
+    cv, cf = _collar(0.01, 0.034, 0.033, sink, top=0.014)
+    bc.append(verts, fcs, cv, cf)
+    mi += [2] * len(cf)
+    sv, sf_ = _blob(Vector((0.0, 0.03, 0.02)), 0.027, 0.014, 0.02, sub=2)
+    bc.append(verts, fcs, sv, sf_)
+    mi += [2] * len(sf_)
+    for side in (1.0, -1.0):
+        nv, nf = _blob(Vector((side * 0.014, 0.038, 0.03)), 0.0045, 0.003, 0.006, sub=1)
+        bc.append(verts, fcs, nv, nf)
+        mi += [1] * len(nf)
+    mats = [_horn_material("M_BeakHookedProc", 0.0, 0.8), _horn_material("M_BeakHookedTipProc", 0.0, 0.7), _skin_material("M_BeakHookedCereProc", 300.0, 0.8, 0.6, 0.2)]
+    upper = bc.mesh_object("BeakHooked", verts, fcs, mats, mi)
+    lsteps = 10
+    LL = L * 0.62
+    lpath = [Vector((0.0, -0.002 - 0.0055 * (1.0 - t) + 0.006 * t * t, hinge + (LL - hinge) * t)) for t in (i / lsteps for i in range(lsteps + 1))]
+
+    def lradius(i, a):
+        if i == lsteps:
+            return 0.0
+        t = i / lsteps
+        c, s = math.cos(a), math.sin(a)
+        h = (0.012 * (1.0 - t) ** 0.7 + 0.001) * (0.45 if c > 0 else 1.0)
+        return _superellipse(c, s, h, 0.024 * (1.0 - t) ** 0.75 + 0.001, 2.0)
+
+    lv, lf, lring = _tube(lpath, lradius, sides)
+    lower = bc.mesh_object("Lower", lv, lf, mats[:2], [1 if i >= int(lsteps * 0.65) else 0 for i in lring], parent=upper)
+    _named(mats, "M_BeakHooked", "M_BeakHookedTip", "M_BeakHookedCere")
+    baked = _bake([upper, lower], "PartBeakHooked", {"M_BeakHooked": sf.tint(_lin("#E0AE3A")), "M_BeakHookedTip": sf.tint(_lin("#3A302A")),
+                                                     "M_BeakHookedCere": sf.tint(_lin("#D9B070"))})
+    pts = _check_pivot("beak_hooked", sink)
+    foot = _footprint(pts)
+
+    def hook(co):
+        k = max(0.0, (co.z - 0.07) / 0.06)
+        if k > 0.0 and co.y < 0.03:
+            co.y -= 0.022 * k * k
+            co.z -= 0.012 * k * k
+        return co
+
+    handles = _shape_keys(lower, [("H1_Open", _hinge_fn(hinge, 30.0), "the lower mandible drops 30 degrees about the hinge")])
+    handles += _shape_keys(upper, [("H2_Hook", hook, "the hook curls further down and back")])
+    rules = _rules("beak_hooked", round(foot + 0.001, 3), sink, "forward_cone", ["spine"], 40, 30, centerline="required")
+    return _mouth_record("beak_hooked", "Creature mouth part (PROPOSED): a raptor's deep keeled beak hooking down past a short lower mandible, dark at the tips, under a fleshy cere with two nostrils; opens on a shape key.",
+                         rules, handles, "H1 is on Lower, H2 on BeakHooked.",
+                         {"M_BeakHooked": 0.15, "M_BeakHookedTip": 0.0, "M_BeakHookedCere": 0.7}, baked)
+
+
+# --- Grin (mouth) ---------------------------------------------------------------------------------
+
+GRIN_W = 0.075
+
+
+def _grin_z(s):
+    """How far the grin stands out of the snout at s = x / GRIN_W: proud in the middle, flush at the corners."""
+    return 0.002 + 0.032 * math.cos(0.5 * math.pi * min(1.0, abs(s))) ** 0.8
+
+
+def _grin_lip(sign, y0, h, d, n=22, sides=14):
+    """One lip: a fat roll across x following the grin's arc, thinning to the corners, which turn up in a smile."""
+    ss = [-1.0 + 2.0 * i / n for i in range(n + 1)]
+    path = [Vector((GRIN_W * s, sign * y0 + 0.014 * abs(s) ** 2.2, _grin_z(s) - 0.007)) for s in ss]
+
+    def radius_at(i, a):
+        if i == n:
+            return 0.0
+        k = 1.0 - 0.72 * abs(ss[i]) ** 3
+        return _superellipse(math.cos(a), math.sin(a), h * k, d * k, 2.0)
+
+    return _tube(path, radius_at, sides)[:2]
+
+
+def build_mouth_grin():
+    """A wide grinning mouth: two fat lips curving round the snout and turning up at the corners, parted over two
+    rows of big square teeth clenched edge to edge. H1_Open drops the lower lip and its teeth, H2_Wide stretches
+    the grin."""
+    sink = 0.03
+    verts, fcs, mi = [], [], []
+    lv, lf = _grin_lip(1.0, 0.021, 0.0125, 0.018)
+    bc.append(verts, fcs, lv, lf)
+    mi += [0] * len(lf)
+
+    def teeth(into_v, into_f, into_m, sign, count, ry):
+        for k in range(count):
+            s = (-1.0 + (2.0 * k + 1.0) / count) * 0.84
+            ds = 0.5 * math.pi / GRIN_W * 0.032 * 0.8 * (math.sin(0.5 * math.pi * abs(s)) / max(1e-3, math.cos(0.5 * math.pi * abs(s)) ** 0.2))
+            yaw = math.atan(ds) * (1.0 if s > 0 else -1.0)
+            centre = Vector((GRIN_W * s, sign * (ry - 0.0005) + 0.014 * abs(s) ** 2.2, _grin_z(s) - 0.0085))
+            tv, tf = _blob(Vector((0.0, 0.0, 0.0)), GRIN_W * 0.84 / count * 0.93, ry, 0.0045, sub=2, power=0.55)
+            rot = Matrix.Rotation(yaw, 3, "Y")
+            bc.append(into_v, into_f, [tuple(centre + rot @ Vector(p)) for p in tv], tf)
+            into_m += [1] * len(tf)
+
+    teeth(verts, fcs, mi, 1.0, 8, 0.0085)
+    # The dark of the mouth behind the teeth, hidden by the lips until the grin opens.
+    n = 16
+    ss = [-0.9 + 1.8 * i / n for i in range(n + 1)]
+    cpath = [Vector((GRIN_W * s, 0.014 * abs(s) ** 2.2, _grin_z(s) - 0.02)) for s in ss]
+    cv, cf, _ = _tube(cpath, lambda i, a: 0.0 if i == n else _superellipse(math.cos(a), math.sin(a), 0.021 * (1.0 - 0.6 * abs(ss[i]) ** 3), 0.011, 2.0), 12)
+    bc.append(verts, fcs, cv, cf)
+    mi += [2] * len(cf)
+    mats = [_wet_skin_material("M_MouthGrinLipProc", 120.0, 0.4), _tooth_material("M_MouthGrinToothProc"), _dark_material("M_MouthGrinInsideProc", 0.5)]
+    upper = bc.mesh_object("MouthGrin", verts, fcs, mats, mi)
+    lverts, lfcs, lmi = [], [], []
+    lv, lf = _grin_lip(-1.0, 0.021, 0.0135, 0.019)
+    bc.append(lverts, lfcs, lv, lf)
+    lmi += [0] * len(lf)
+    teeth(lverts, lfcs, lmi, -1.0, 8, 0.008)
+    lower = bc.mesh_object("Lower", lverts, lfcs, mats[:2], lmi, parent=upper)
+    _named(mats, "M_MouthGrinLip", "M_MouthGrinTooth", "M_MouthGrinInside")
+    baked = _bake([upper, lower], "PartMouthGrin", {"M_MouthGrinLip": sf.tint(_lin("#B5625C")), "M_MouthGrinTooth": sf.tint(_lin("#F2EAD4")),
+                                                    "M_MouthGrinInside": sf.tint(_lin("#3A161C"))})
+    pts = _check_pivot("mouth_grin", sink)
+    foot = _footprint(pts)
+
+    def drop(co):
+        s = min(1.0, abs(co.x) / GRIN_W)
+        co.y -= 0.03 * (1.0 - 0.75 * s * s)
+        return co
+
+    def wide(co):
+        co.x *= 1.25
+        return co
+
+    handles = _shape_keys(lower, [("H1_Open", drop, "the lower lip and teeth drop 0.03 m in the middle, the corners less"),
+                                  ("H2_Wide", wide, "the grin 25% wider")])
+    _shape_keys(upper, [("H2_Wide", wide, "")])
+    rules = _rules("mouth_grin", round(foot + 0.001, 3), sink, "forward_cone", ["spine"], 40, 30, centerline="required")
+    return _mouth_record("mouth_grin", "Creature mouth part (PROPOSED): a wide grin, two fat lips turned up at the corners and parted over two rows of big square teeth; opens on a shape key.",
+                         rules, handles, "H1 is on Lower, H2 on MouthGrin and Lower.",
+                         {"M_MouthGrinLip": 0.55, "M_MouthGrinTooth": 0.0, "M_MouthGrinInside": 0.0}, baked)
+
+
+# --- Tendril mouth (mouth) ------------------------------------------------------------------------
+
+TENDRILS = ((0.027, -0.002, 0.105, 0.03), (0.018, -0.019, 0.15, 0.016), (0.0065, -0.027, 0.175, 0.004))     # root x, root y, length, splay
+
+
+def _tendril_point(root_x, root_y, length, splay, u, side, phase):
+    return Vector((side * (root_x + splay * u + 0.006 * math.sin(2.0 * math.pi * (1.4 * u + phase)) * u),
+                   root_y - 0.78 * length * u ** 1.5 + 0.01 * math.sin(2.0 * math.pi * (1.1 * u + phase)) * u,
+                   0.006 + 0.36 * length * math.sin(0.5 * math.pi * min(1.0, 1.7 * u)) - 0.12 * length * max(0.0, u - 0.6) ** 1.3))
+
+
+def build_mouth_tendrils():
+    """A face of feelers: six soft tendrils, long in the middle and short at the sides, push out of a fleshy pad
+    and hang in loose waves round a small puckered mouth. H1_Length lengthens the tendrils, H2_Splay spreads
+    them."""
+    sink = 0.02
+    verts, fcs, mi = [], [], []
+    pv, pf = _blob(Vector((0.0, -0.004, 0.0)), 0.042, 0.036, 0.017, sub=3)
+    pv = [(x, y, max(z, -sink + 0.001)) for x, y, z in pv]
+    bc.append(verts, fcs, pv, pf)
+    mi += [0] * len(pf)
+    steps = 12
+    for n, (rx, ry, length, splay) in enumerate(TENDRILS):
+        for side in (1.0, -1.0):
+            phase = 0.17 * n + (0.0 if side > 0 else 0.35)
+            path = [_tendril_point(rx, ry, length, splay, i / steps, side, phase) for i in range(steps + 1)]
+            path[0].z = -0.008
+            tv, tf, _ = _tube(path, lambda i, a: 0.0 if i == steps else 0.0092 * (1.0 - i / steps) ** 0.75 + 0.0012, 8)
+            bc.append(verts, fcs, tv, tf)
+            mi += [0] * len(tf)
+    rv, rf = _torus(0.0115, 0.0055, 16, 8, z=0.0155, wobble=0.12)
+    bc.append(verts, fcs, [(x, y + 0.006, z) for x, y, z in rv], rf)
+    mi += [0] * len(rf)
+    dv, df = _blob(Vector((0.0, 0.006, 0.012)), 0.0105, 0.0105, 0.006, sub=2)
+    bc.append(verts, fcs, dv, df)
+    mi += [1] * len(df)
+    mats = [_wet_skin_material("M_MouthTendrilsSkinProc", 110.0, 0.32), _dark_material("M_MouthTendrilsThroatProc", 0.4)]
+    obj = bc.mesh_object("MouthTendrils", verts, fcs, mats, mi)
+    _named(mats, "M_MouthTendrilsSkin", "M_MouthTendrilsThroat")
+    baked = _bake([obj], "PartMouthTendrils", {"M_MouthTendrilsSkin": sf.tint(_lin("#8E6FA2")), "M_MouthTendrilsThroat": sf.tint(_lin("#2C1420"))})
+    pts = _check_pivot("mouth_tendrils", sink)
+    foot = _footprint(pts)
+
+    def hang(co):
+        return max(0.0, -co.y - 0.035) + max(0.0, co.z - 0.03)
+
+    def length(co):
+        if co.y < -0.035:
+            co.y = -0.035 + (co.y + 0.035) * 1.4
+        return co
+
+    def splay(co):
+        k = hang(co)
+        if k > 0.0:
+            co.x += math.copysign(0.45 * k, co.x)
+            co.z += 0.25 * k
+        return co
+
+    handles = _shape_keys(obj, [("H1_Length", length, "the tendrils hang 40% longer"), ("H2_Splay", splay, "the tendrils spread out and forward")])
+    rules = _rules("mouth_tendrils", round(foot + 0.001, 3), sink, "forward_cone", ["spine"], 40, 30, centerline="required")
+    return _mouth_record("mouth_tendrils", "Creature mouth part (PROPOSED): six soft tendrils hanging in loose waves from a fleshy pad round a small puckered mouth.",
+                         rules, handles, "", {"M_MouthTendrilsSkin": 0.9, "M_MouthTendrilsThroat": 0.0}, baked)
+
+
+# --- Three more eyes ------------------------------------------------------------------------------
+
+def _eye_variant(part_type, root, radius, sink, iris_half, pupil, colours, lid_scales=False, slit=0.0, proud=0.45, purpose=""):
+    """An eyeball in a rolled lid like cpart_eye_round's, in another size and colouring. `colours` is ball, iris,
+    lid. Returns (ball, lid, top, baked-less material names) for the caller to add to before the bake."""
+    tag = "".join(w.capitalize() for w in part_type.split("_"))
+    centre = Vector((0.0, 0.0, radius * proud))
+    axis = Vector((0.0, 0.0, 1.0))
+    sclera = _sclera_material(f"M_{tag}BallProc")
+    iris_mat = _iris_material(f"M_{tag}IrisProc", centre, axis, iris_half, pupil, slit=slit, slit_axis=(1.0, 0.0, 0.0))
+    ball = _eye_ball(root, centre, radius, iris_half, sclera, iris_mat)
+    sclera.name, iris_mat.name = f"M_{tag}Ball", f"M_{tag}Iris"
+    top = radius * 0.5
+    lv, lf = _lid_ring(radius, sink, top)
+    lid_mat = _lid_material(f"M_{tag}LidProc", scales=lid_scales)
+    lid = bc.mesh_object("Lid", lv, lf, [lid_mat], parent=ball, fix_normals=False)
+    lid_mat.name = f"M_{tag}Lid"
+    tints = {f"M_{tag}Ball": sf.tint(_lin(colours[0])), f"M_{tag}Iris": sf.tint(_lin(colours[1])), f"M_{tag}Lid": sf.tint(_lin(colours[2]))}
+    return ball, lid, top, tints, tag
+
+
+def _eye_finish(part_type, ball, lid, top, radius, sink, baked, tag, purpose, extra_handles=(), extra_paint=None, note_extra=""):
+    pts = _check_pivot(part_type, sink)
+    foot = _footprint(pts, z_max=0.02)
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z + 0.25 * radius * max(0.0, co.z) / (radius * 1.45)))
+
+    handles = _shape_keys(lid, [("H1_Blink", _blink_fn(radius, top), "the lid rolls over the ball to a slit")])
+    handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
+    handles += list(extra_handles)
+    rules = _rules(part_type, round(foot + 0.001, 3), sink, "normal", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = f"H1 is on Lid, H2 on {ball.name}{note_extra}; all are 0 to 1000 per mille."
+    paint = {f"M_{tag}Ball": 0.0, f"M_{tag}Iris": 0.0, f"M_{tag}Lid": 0.9}
+    paint.update(extra_paint or {})
+    return {"purpose": purpose, "category": "part", "part_type": part_type, "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": paint, "revision": 1, **baked}
+
+
+def build_eye_goat():
+    """A grazer's eye: an amber ball with a level bar of a pupil (long along +Y, toward the head, so it lies level
+    on a side-set eye) in a soft rolled lid. H1_Blink shuts the lid, H2_Bulge pushes the ball out."""
+    radius, sink = 0.047, 0.03
+    ball, lid, top, tints, tag = _eye_variant("eye_goat", "EyeGoat", radius, sink, math.radians(66.0), math.radians(44.0),
+                                              ("#D9C9A0", "#C9962E", "#A08A6C"), slit=0.3)
+    baked = _bake([ball, lid], "PartEyeGoat", keep=("EyeGoat",), tints=tints, size=256)
+    return _eye_finish("eye_goat", ball, lid, top, radius, sink, baked, tag,
+                       "Creature eye part (PROPOSED): a grazer's amber eye with a level bar pupil in a soft rolled lid; blinks on a shape key.")
+
+
+def build_eye_beady():
+    """A small beady eye: a glossy near-black bead with a thin warm ring of iris, in a neat lid. H1_Blink shuts
+    the lid, H2_Bulge pushes the bead out."""
+    radius, sink = 0.028, 0.02
+    ball, lid, top, tints, tag = _eye_variant("eye_beady", "EyeBeady", radius, sink, math.radians(60.0), math.radians(44.0),
+                                              ("#241A16", "#9A6226", "#8C6E60"), proud=0.55)
+    baked = _bake([ball, lid], "PartEyeBeady", keep=("EyeBeady",), tints=tints, size=256)
+    return _eye_finish("eye_beady", ball, lid, top, radius, sink, baked, tag,
+                       "Creature eye part (PROPOSED): a small glossy near-black bead of an eye with a thin warm iris ring in a neat lid; blinks on a shape key.")
+
+
+def build_eye_brow():
+    """A glaring eye under a heavy brow: a pale ball with a hot orange iris and a small pupil, and over it (-X,
+    which is up on a side-set eye) a thick ridge that slopes down toward the head (+Y) in a scowl. H1_Blink shuts
+    the lid, H2_Bulge pushes the ball out, H3_Scowl drops the ridge's front end further."""
+    radius, sink = 0.042, 0.03
+    ball, lid, top, tints, tag = _eye_variant("eye_brow", "EyeBrow", radius, sink, math.radians(40.0), math.radians(13.0),
+                                              ("#EDE4CC", "#D2561E", "#8E7A6A"))
+    n = 14
+    ss = [-1.0 + 2.0 * i / n for i in range(n + 1)]
+    path = [Vector((-0.033 + 0.012 * s + 0.004 * s * s, 0.058 * s, 0.004 + 0.042 * math.cos(0.5 * math.pi * s) ** 0.6)) for s in ss]
+    path[0].z = path[-1].z = -0.012
+
+    def radius_at(i, a):
+        if i == n:
+            return 0.0
+        k = 1.0 - 0.55 * abs(ss[i]) ** 2.5
+        return _superellipse(math.cos(a), math.sin(a), 0.021 * k, 0.012 * k, 2.3)
+
+    bv, bf, _ = _tube(path, radius_at, 14)
+    brow_mat = _skin_material("M_EyeBrowRidgeProc", 240.0, 0.75, 0.7, 0.3)
+    brow = bc.mesh_object("Brow", bv, bf, [brow_mat], parent=ball)
+    brow_mat.name = "M_EyeBrowRidge"
+    tints["M_EyeBrowRidge"] = sf.tint(_lin("#7E6A5C"))
+    baked = _bake([ball, lid, brow], "PartEyeBrow", keep=("EyeBrow",), tints=tints, size=256)
+
+    def scowl(co):
+        k = min(1.0, max(0.0, (co.y + 0.02) / 0.07))
+        co.x += 0.014 * k + 0.003
+        co.z += 0.004 * k
+        return co
+
+    extra = _shape_keys(brow, [("H3_Scowl", scowl, "the ridge's front end drops further over the eye")])
+    return _eye_finish("eye_brow", ball, lid, top, radius, sink, baked, tag,
+                       "Creature eye part (PROPOSED): a glaring pale eye with a hot orange iris under a heavy scowling brow ridge; blinks on a shape key.",
+                       extra_handles=extra, extra_paint={"M_EyeBrowRidge": 0.9}, note_extra=", H3 on Brow")
+
+
+# --- Antler (weapon) ------------------------------------------------------------------------------
+
+def _antler_beam(u):
+    return Vector((0.03 * u + 0.06 * u * u, -0.055 * math.sin(math.pi * 0.85 * u) + 0.02 * u, -0.004 + 0.236 * u))
+
+
+def build_antler():
+    """A branching antler: a ridged beam rising from a knobbly burr, sweeping back and out to the right (+X) and
+    then forward, with three tines reaching up and toward the head. Chiral: mirrored at bake for the left.
+    H1_Length grows it, H2_Spread leans the beam further out."""
+    sink = 0.02
+    steps = 20
+    path = [_antler_beam(i / steps) for i in range(steps + 1)]
+    verts, fcs, _ = _tube(path, lambda i, a: 0.0 if i == steps else (0.0145 * (1.0 - i / steps) ** 0.8 + 0.0022) * (1.0 + 0.05 * math.cos(5.0 * a)), 14)
+    for u, length, lean in ((0.2, 0.075, 0.2), (0.45, 0.095, 0.5), (0.7, 0.08, 0.8)):
+        root = _antler_beam(u)
+        d = Vector((0.12 + 0.2 * u, 0.85 - 0.3 * lean, 0.45 + 0.4 * lean)).normalized()
+        _spike_piece(verts, fcs, root, d, length, 0.0105 * (1.0 - 0.45 * u), Vector((0.0, -0.1, 0.4)), sides=10, power=0.7)
+    rv, rf = _torus(0.0175, 0.0065, 18, 8, z=0.004, wobble=0.3)
+    bc.append(verts, fcs, rv, rf)
+    mat = _horn_material("M_AntlerProc", 0.0, 0.7)
+    obj = bc.mesh_object("Antler", verts, fcs, [mat])
+    mat.name = "M_Antler"
+    baked = _bake([obj], "PartAntler", {"M_Antler": sf.tint(_lin("#C8B48C"))})
+    pts = _check_pivot("antler", sink)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.01:
+            k = 1.3
+            return Vector((co.x * k, co.y * k, 0.01 + (co.z - 0.01) * k))
+        return co
+
+    def spread(co):
+        k = max(0.0, co.z) / 0.24
+        co.x += 0.07 * k * k
+        co.z -= 0.015 * k * k
+        return co
+
+    handles = _shape_keys(obj, [("H1_Length", length, "the antler 30% bigger"), ("H2_Spread", spread, "the beam leans further out to the side")])
+    rules = _rules("antler", round(foot + 0.001, 3), sink, "normal", ["spine", "part"], 60, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature antler part (PROPOSED): a ridged beam rising from a knobbly burr and sweeping back, out and forward, with three tines (mirrored at bake for the left).",
+            "category": "part", "part_type": "antler", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_Antler": 0.08}, "revision": 1, **baked}
+
+
+# --- Tail stinger (weapon) ------------------------------------------------------------------------
+
+STING_ARC_R = 0.07
+STING_REACH = 0.05
+
+
+def _stinger_point(u):
+    """The stinger's centreline for the tail cap (+Z out along the tail, +Y up): straight out for the first fifth,
+    then an arc up and over, back toward the body."""
+    if u < 0.2:
+        return Vector((0.0, 0.0, -0.02 + (STING_REACH + 0.02) * u / 0.2))
+    a = math.radians(-90.0 + 140.0 * (u - 0.2) / 0.8)
+    return Vector((0.0, STING_ARC_R + STING_ARC_R * math.sin(a), STING_REACH + STING_ARC_R * math.cos(a)))
+
+
+def build_tail_stinger():
+    """A scorpion's tail tip: five swollen armoured segments arching up and over toward the body, ending in a
+    venom bulb with a dark hooked barb. H1_Size swells the bulb and barb, H2_Barb lengthens the barb."""
+    sink = 0.025
+    steps = 30
+    path = [_stinger_point(i / steps) for i in range(steps + 1)]
+
+    def radius_at(i, a):
+        u = i / steps
+        seg = abs(math.sin(math.pi * 5.0 * u)) ** 0.5
+        return (0.027 - 0.011 * u) * (0.78 + 0.22 * seg) * (1.0 + 0.06 * math.cos(a) ** 2)
+
+    verts, fcs, _ = _tube(path, radius_at, 16)
+    end, tangent = path[-1], (path[-1] - path[-2]).normalized()
+    bulb_c = end + tangent * 0.014
+    bv, bf = _blob(bulb_c, 0.024, 0.026, 0.026, sub=3)
+    bc.append(verts, fcs, bv, bf)
+    mats = [_scale_material("M_TailStingerShellProc", 180.0), _horn_material("M_TailStingerBarbProc", 0.0, 0.75)]
+    obj = bc.mesh_object("TailStinger", verts, fcs, [mats[0]])
+    sv, sfc = [], []
+    barb_root = bulb_c + tangent * 0.012
+    _spike_piece(sv, sfc, barb_root, tangent, 0.07, 0.0115, Vector((0.0, -0.45, 0.1)), sides=10, power=0.75)
+    barb = bc.mesh_object("Barb", sv, sfc, [mats[1]], parent=obj)
+    _named(mats, "M_TailStingerShell", "M_TailStingerBarb")
+    baked = _bake([obj, barb], "PartTailStinger", {"M_TailStingerShell": sf.tint(_lin("#8A4E38")), "M_TailStingerBarb": sf.tint(_lin("#2A1C18"))})
+    pts = _check_pivot("tail_stinger", sink)
+    foot = _footprint(pts)
+
+    def size(co):
+        d = (co - bulb_c).length
+        k = max(0.0, 1.0 - max(0.0, d - 0.03) / 0.03)
+        return bulb_c + (co - bulb_c) * (1.0 + 0.3 * k)
+
+    def size_barb(co):
+        return bulb_c + (co - bulb_c) * 1.3
+
+    def longer(co):
+        return barb_root + (co - barb_root) * 1.5
+
+    handles = _shape_keys(obj, [("H1_Size", size, "the venom bulb and barb 30% bigger")])
+    handles += _shape_keys(barb, [("H1_Size", size_barb, ""), ("H2_Barb", longer, "the barb 50% longer")])[1:]
+    rules = _rules("tail_stinger", round(foot + 0.001, 3), sink, "normal", ["spine"], 15, 20, centerline="required")
+    rules["handles"] = handles
+    rules["handles_note"] = "H1 is on TailStinger and Barb, H2 on Barb."
+    rules["placement_note"] = "Meant for the tail cap (spine_u = 1)."
+    return {"purpose": "Creature tail weapon part (PROPOSED): five swollen armoured segments arching up and over toward the body to a venom bulb with a dark hooked barb, for the tail tip.",
+            "category": "part", "part_type": "tail_stinger", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_TailStingerShell": 0.85, "M_TailStingerBarb": 0.0}, "revision": 1, **baked}
+
+
+# --- Back plate (detail) --------------------------------------------------------------------------
+
+def build_back_plate():
+    """A tall bony back plate, kite-shaped in side view and thin across the body, on a thick skin-covered base:
+    for a row along the spine. H1_Height raises it, H2_Sweep rakes it back toward the tail."""
+    sink, height = 0.02, 0.19
+    steps = 18
+    ts = [i / steps for i in range(steps + 1)]
+    path = [Vector((0.0, -0.022 * t * t, -sink + 0.0005 + (height + sink) * t)) for t in ts]
+
+    def half_w(i):
+        t = ts[i]
+        return 0.0 if i == steps else (0.04 + 0.125 * t) * (1.0 - t) ** 0.8 + 0.002
+
+    def half_t(i):
+        return 0.015 * (1.0 - ts[i]) ** 0.7 + 0.0025
+
+    verts, fcs, where = _flat_tube(path, Vector((0.0, 1.0, 0.0)), half_w, half_t, sides=16)
+    mi = [0 if i < 3 else 1 for i, _ in where]
+    plate_sh = sf.Shader("M_BackPlateProc")
+    grooves = plate_sh.noise(55.0, 3.0, vector=mp._stretched(plate_sh, (1.0, 9.0, 0.5)))
+    pits = plate_sh.remap(plate_sh.voronoi(240.0, 0.9), 0.25, 0.05)
+    plate_sh.bump(plate_sh.math("SUBTRACT", grooves, plate_sh.math("MULTIPLY", pits, 0.5)), 0.45, 0.0015)
+    mats = [_scale_material("M_BackPlateBaseProc", 240.0),
+            plate_sh.out(_grey(plate_sh, plate_sh.math("SUBTRACT", plate_sh.remap(grooves, 0.25, 0.75), plate_sh.math("MULTIPLY", pits, 0.25), clamp=True), 0.62), 0.5)]
+    obj = bc.mesh_object("BackPlate", verts, fcs, mats, mi)
+    _named(mats, "M_BackPlateBase", "M_BackPlate")
+    baked = _bake([obj], "PartBackPlate", {"M_BackPlateBase": sf.tint(_lin("#8A7A5E")), "M_BackPlate": sf.tint(_lin("#C97B45"))})
+    pts = _check_pivot("back_plate", sink)
+    foot = _footprint(pts)
+
+    def taller(co):
+        if co.z > 0.01:
+            co.z = 0.01 + (co.z - 0.01) * 1.4
+        return co
+
+    def sweep(co):
+        k = max(0.0, co.z) / height
+        co.y -= 0.06 * k ** 1.5
+        return co
+
+    handles = _shape_keys(obj, [("H1_Height", taller, "the plate 40% taller"), ("H2_Sweep", sweep, "the plate raked back toward the tail")])
+    rules = _rules("back_plate", round(foot + 0.001, 3), sink, "normal", ["spine", "part"], 30, 30)
+    rules["handles"] = handles
+    return {"purpose": "Creature back plate part (PROPOSED): a tall kite-shaped bony plate, thin across the body, on a thick skin-covered base, for a row along the spine.",
+            "category": "part", "part_type": "back_plate", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_BackPlateBase": 0.9, "M_BackPlate": 0.45}, "revision": 1, **baked}
+
+
+# --- Feather fan (detail) -------------------------------------------------------------------------
+
+FEATHER_ANGLES = (-63.0, -42.0, -21.0, 0.0, 21.0, 42.0, 63.0)
+
+
+def build_feather_fan():
+    """A display fan of seven long feathers spread across the body and leaning back toward the tail, each a quill
+    and a broad vane with a gold eye-spot band near its tip, from a small skin pad. H1_Spread opens the fan,
+    H2_Length lengthens the feathers."""
+    sink = 0.015
+    verts, fcs, mi = [], [], []
+    steps = 14
+    us = [i / steps for i in range(steps + 1)]
+    normal = Vector((0.0, 1.0, 0.3)).normalized()
+    for deg in FEATHER_ANGLES:
+        a = math.radians(deg)
+        d = (Vector((math.sin(a), 0.0, math.cos(a))) - normal * 0.28).normalized()
+        length = 0.23 * (1.0 - 0.22 * (deg / 63.0) ** 2)
+        root = Vector((0.012 * math.sin(a), 0.0, -0.011))
+        path = [root + d * (length * u) - normal * (0.035 * u * u) for u in us]
+        wide = d.cross(normal).normalized()
+
+        def half_w(i):
+            u = us[i]
+            if i == steps:
+                return 0.0
+            return 0.003 if u < 0.16 else 0.003 + 0.021 * math.sin(math.pi * min(1.0, ((u - 0.16) / 0.84) ** 0.85)) ** 0.55
+
+        def half_t(i):
+            return 0.0032 if us[i] < 0.16 else 0.0018
+
+        fv, ff, where = _flat_tube(path, wide, half_w, half_t, sides=8)
+        bc.append(verts, fcs, fv, ff)
+        mi += [1 if 0.66 <= us[i] < 0.88 else 0 for i, _ in where]
+    pv, pf = _blob(Vector((0.0, 0.0, 0.0)), 0.034, 0.016, 0.0125, sub=2)
+    bc.append(verts, fcs, pv, pf)
+    mi += [2] * len(pf)
+    vane = sf.Shader("M_FeatherFanVaneProc")
+    barbs = vane.noise(340.0, 2.0, vector=mp._stretched(vane, (7.0, 2.0, 0.3)))
+    vane.bump(barbs, 0.3, 0.0005)
+    spot = sf.Shader("M_FeatherFanSpotProc")
+    barbs2 = spot.noise(340.0, 2.0, vector=mp._stretched(spot, (7.0, 2.0, 0.3)))
+    spot.bump(barbs2, 0.3, 0.0005)
+    mats = [vane.out(_grey(vane, vane.remap(barbs, 0.25, 0.75), 0.7), 0.6), spot.out(_grey(spot, spot.remap(barbs2, 0.25, 0.75), 0.8), 0.45),
+            _skin_material("M_FeatherFanBaseProc")]
+    obj = bc.mesh_object("FeatherFan", verts, fcs, mats, mi)
+    _named(mats, "M_FeatherFanVane", "M_FeatherFanSpot", "M_FeatherFanBase")
+    baked = _bake([obj], "PartFeatherFan", {"M_FeatherFanVane": sf.tint(_lin("#3F78B8")), "M_FeatherFanSpot": sf.tint(_lin("#E9B741")),
+                                            "M_FeatherFanBase": sf.tint(_lin("#9A8470"))}, tolerance=0.0005)
+    pts = _check_pivot("feather_fan", sink)
+    foot = _footprint(pts)
+
+    def spread(co):
+        if co.z > 0.012:
+            r = math.hypot(co.x, co.z)
+            a = math.atan2(co.x, co.z) * 1.3
+            return Vector((r * math.sin(a), co.y, r * math.cos(a)))
+        return co
+
+    def length(co):
+        if co.z > 0.012 or abs(co.x) > 0.035:
+            return Vector((co.x * 1.3, co.y * 1.3, co.z * 1.3))
+        return co
+
+    handles = _shape_keys(obj, [("H1_Spread", spread, "the fan opens 30% wider"), ("H2_Length", length, "the feathers 30% longer")])
+    rules = _rules("feather_fan", round(foot + 0.001, 3), sink, "normal", ["spine", "part"], 45, 40)
+    rules["handles"] = handles
+    return {"purpose": "Creature display part (PROPOSED): a fan of seven long feathers leaning back toward the tail, each with a gold eye-spot band near its tip, from a small skin pad.",
+            "category": "part", "part_type": "feather_fan", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FeatherFanVane": 0.9, "M_FeatherFanSpot": 0.0, "M_FeatherFanBase": 0.9}, "revision": 1, **baked}
+
+
+# --- Long ear (detail) ----------------------------------------------------------------------------
+
+def build_ear_long():
+    """A long upright ear like a hare's: a furred leaf standing out of the skin and leaning a little back, cupped
+    on the side that faces the head (+Y) round a pale inner ear, ending in a soft point. H1_Length lengthens it,
+    H2_Flop folds the upper half forward and down."""
+    sink, height = 0.012, 0.21
+    steps = 18
+    us = [i / steps for i in range(steps + 1)]
+    path = [Vector((0.0, -0.035 * u ** 1.6, -sink + 0.0005 + (height + sink) * u)) for u in us]
+
+    def half_w(i):
+        u = us[i]
+        return 0.0 if i == steps else 0.015 + 0.03 * math.sin(math.pi * u ** 0.75) ** 0.8
+
+    def half_t(i):
+        return 0.0085 * (1.0 - 0.55 * us[i])
+
+    # _flat_tube's normal is tangent x wide; wide = -X puts it on +Y, the cupped side.
+    verts, fcs, where = _flat_tube(path, Vector((-1.0, 0.0, 0.0)), half_w, half_t, sides=16, dent=0.75)
+    mi = [1 if (i >= 2 and 2 <= j <= 5) else 0 for i, j in where]
+    inner = _wet_skin_material("M_EarLongInnerProc", 160.0, 0.5)
+    mats = [_fur_material("M_EarLongProc"), inner]
+    obj = bc.mesh_object("EarLong", verts, fcs, mats, mi)
+    _named(mats, "M_EarLong", "M_EarLongInner")
+    baked = _bake([obj], "PartEarLong", {"M_EarLong": sf.tint(_lin("#B39674")), "M_EarLongInner": sf.tint(_lin("#D9A39A"))})
+    pts = _check_pivot("ear_long", sink)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.01:
+            co.z = 0.01 + (co.z - 0.01) * 1.35
+            co.y *= 1.2
+        return co
+
+    def flop(co):
+        k = max(0.0, (co.z - 0.09) / 0.12)
+        if k > 0.0:
+            co.y += 0.11 * k * k + 0.02 * k
+            co.z -= 0.085 * k * k
+        return co
+
+    handles = _shape_keys(obj, [("H1_Length", length, "the ear 35% longer"), ("H2_Flop", flop, "the upper half folds forward and down")])
+    rules = _rules("ear_long", round(foot + 0.001, 3), sink, "normal", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    return {"purpose": "Creature ear part (PROPOSED): a long upright furred ear like a hare's, cupped toward the head round a pale inner ear, ending in a soft point.",
+            "category": "part", "part_type": "ear_long", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EarLong": 0.9, "M_EarLongInner": 0.2}, "revision": 1, **baked}
+
+
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
     "cpart_eye": (build_eye, 1200),
@@ -4652,6 +5540,19 @@ ASSETS = {
     "cpart_ear_pointed": (build_ear_pointed, 1200),
     "cpart_tail_bushy": (build_tail_bushy, 2500),
     "cpart_mane": (build_mane, 2500),
+    "cpart_muzzle_fang": (build_muzzle_fang, 2500),
+    "cpart_muzzle_grazer": (build_muzzle_grazer, 1200),
+    "cpart_beak_hooked": (build_beak_hooked, 1200),
+    "cpart_mouth_grin": (build_mouth_grin, 2500),
+    "cpart_mouth_tendrils": (build_mouth_tendrils, 2500),
+    "cpart_eye_goat": (build_eye_goat, 1200),
+    "cpart_eye_beady": (build_eye_beady, 1200),
+    "cpart_eye_brow": (build_eye_brow, 1200),
+    "cpart_antler": (build_antler, 1200),
+    "cpart_tail_stinger": (build_tail_stinger, 1200),
+    "cpart_back_plate": (build_back_plate, 1200),
+    "cpart_feather_fan": (build_feather_fan, 2500),
+    "cpart_ear_long": (build_ear_long, 1200),
 }
 
 

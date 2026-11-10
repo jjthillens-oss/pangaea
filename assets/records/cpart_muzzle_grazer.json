@@ -1,0 +1,106 @@
+{
+  "id": "cpart_muzzle_grazer",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a grazer's long deep muzzle with a blunt squared end, two wide nostrils, soft lips and flat cropping teeth; the lower jaw opens on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_muzzle_grazer.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_muzzle_grazer.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.094,
+    "y_forward": 0.102,
+    "z_up": 0.177
+  },
+  "triangles": 604,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartMuzzleGrazer_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartMuzzleGrazer_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartMuzzleGrazer_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_MuzzleGrazerGum",
+    "M_MuzzleGrazerNostril",
+    "M_MuzzleGrazerSkin",
+    "M_MuzzleGrazerTooth"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Lower",
+    "MuzzleGrazer"
+  ],
+  "part_type": "muzzle_grazer",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "muzzle_grazer",
+    "footprint_radius_m": 0.065,
+    "sink_depth_m": 0.025,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "mouth",
+    "handles": [
+      {
+        "key": "H1_Open",
+        "meaning": "the lower jaw drops 24 degrees about the hinge",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Length",
+        "meaning": "the muzzle 30% longer",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "H1 is on Lower, H2 on MuzzleGrazer and Lower."
+  },
+  "paint_mix": {
+    "M_MuzzleGrazerSkin": 0.85,
+    "M_MuzzleGrazerGum": 0.0,
+    "M_MuzzleGrazerTooth": 0.0,
+    "M_MuzzleGrazerNostril": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1912,
+    "triangles_after": 604
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

@@ -219,6 +219,19 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_horn_ram` | horn_ram, `normal`, spine/part, chiral, centreline forbidden | 670 | H1_Length, H2_Thick | A thick ridged ram's horn rising from the skin and curling back over itself in a shrinking spiral that drifts out to +X, clear of itself and of the skin, to a point |
 | `cpart_horn_nose` | horn_nose, `normal`, spine/part | 342 | H1_Length, H2_Sweep | A stout conical horn on a broad base with six growth rings, sweeping up and forward to a blunt point; for the snout or brow |
 | `cpart_spike` | spike, `normal`, spine/limb/part, sink 0.015 | 316 | H1_Length, H2_Lean | One bony thorn with concave flanks and three keeled edges, raked a little back, flaring into a low oval scaly scute; for the back, shoulders, limbs or tail |
+| `cpart_muzzle_fang` | muzzle_fang, `forward_cone`, centreline required | 568 | H1_Open, H2_Fangs | A hunter's short furred muzzle with a dark nose pad, two long sabre fangs outside the lower jaw and small teeth between; the lower jaw opens on a shape key. |
+| `cpart_muzzle_grazer` | muzzle_grazer, `forward_cone`, centreline required | 604 | H1_Open, H2_Length | A grazer's long deep muzzle with a blunt squared end, two wide nostrils, soft lips and flat cropping teeth; the lower jaw opens on a shape key. |
+| `cpart_beak_hooked` | beak_hooked, `forward_cone`, centreline required | 430 | H1_Open, H2_Hook | A raptor's deep keeled beak hooking down past a short lower mandible, dark at the tips, under a fleshy cere with two nostrils; opens on a shape key. |
+| `cpart_mouth_grin` | mouth_grin, `forward_cone`, centreline required | 1484 | H1_Open, H2_Wide | A wide grin, two fat lips turned up at the corners and parted over two rows of big square teeth; opens on a shape key. |
+| `cpart_mouth_tendrils` | mouth_tendrils, `forward_cone`, centreline required | 1744 | H1_Length, H2_Splay | Six soft tendrils hanging in loose waves from a fleshy pad round a small puckered mouth. |
+| `cpart_eye_goat` | eye_goat, `normal` | 896 | H1_Blink, H2_Bulge | A grazer's amber eye with a level bar pupil in a soft rolled lid; blinks on a shape key. |
+| `cpart_eye_beady` | eye_beady, `normal` | 743 | H1_Blink, H2_Bulge | A small glossy near-black bead of an eye with a thin warm iris ring in a neat lid; blinks on a shape key. |
+| `cpart_eye_brow` | eye_brow, `normal` | 1014 | H1_Blink, H2_Bulge, H3_Scowl | A glaring pale eye with a hot orange iris under a heavy scowling brow ridge; blinks on a shape key. |
+| `cpart_antler` | antler, `normal`, chiral, centreline forbidden | 826 | H1_Length, H2_Spread | A ridged beam rising from a knobbly burr and sweeping back, out and forward, with three tines (mirrored at bake for the left). |
+| `cpart_tail_stinger` | tail_stinger, `normal`, centreline required | 730 | H1_Size, H2_Barb | Five swollen armoured segments arching up and over toward the body to a venom bulb with a dark hooked barb, for the tail tip. |
+| `cpart_back_plate` | back_plate, `normal` | 150 | H1_Height, H2_Sweep | A tall kite-shaped bony plate, thin across the body, on a thick skin-covered base, for a row along the spine. |
+| `cpart_feather_fan` | feather_fan, `normal` | 972 | H1_Spread, H2_Length | A fan of seven long feathers leaning back toward the tail, each with a gold eye-spot band near its tip, from a small skin pad. |
+| `cpart_ear_long` | ear_long, `normal` | 576 | H1_Length, H2_Flop | A long upright furred ear like a hare's, cupped toward the head round a pale inner ear, ending in a soft point. |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 

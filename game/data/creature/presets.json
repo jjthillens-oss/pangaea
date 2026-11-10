@@ -1008,7 +1008,7 @@
 					},
 					{
 						"id": "p_3",
-						"type": "maw",
+						"type": "mouth_grin",
 						"host": "spine",
 						"u": 0,
 						"ring": 500,
@@ -1017,7 +1017,7 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 650,
+						"scale": 1000,
 						"handles": [],
 						"mirror": false
 					},
@@ -1636,11 +1636,11 @@
 					},
 					{
 						"id": "p_3",
-						"type": "beak",
+						"type": "muzzle_grazer",
 						"host": "spine",
 						"u": 0,
 						"ring": 500,
-						"elev": 20,
+						"elev": 10,
 						"height": 0,
 						"turn": 0,
 						"tilt": 0,
@@ -1651,7 +1651,7 @@
 					},
 					{
 						"id": "p_4",
-						"type": "eye_round",
+						"type": "eye_goat",
 						"host": "spine",
 						"u": 43,
 						"ring": 180,
@@ -1666,22 +1666,22 @@
 					},
 					{
 						"id": "p_5",
-						"type": "horn_nose",
+						"type": "antler",
 						"host": "spine",
 						"u": 53,
-						"ring": 0,
+						"ring": 70,
 						"elev": 0,
 						"height": 0,
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 700,
+						"scale": 900,
 						"handles": [],
-						"mirror": false
+						"mirror": true
 					},
 					{
 						"id": "p_6",
-						"type": "ear_pointed",
+						"type": "ear_long",
 						"host": "spine",
 						"u": 63,
 						"ring": 230,
@@ -1690,7 +1690,7 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 900,
+						"scale": 800,
 						"handles": [],
 						"mirror": true
 					}
@@ -1932,7 +1932,7 @@
 					},
 					{
 						"id": "p_5",
-						"type": "spike",
+						"type": "back_plate",
 						"host": "spine",
 						"u": 446,
 						"ring": 0,
@@ -1947,7 +1947,7 @@
 					},
 					{
 						"id": "p_6",
-						"type": "spike",
+						"type": "back_plate",
 						"host": "spine",
 						"u": 609,
 						"ring": 0,
@@ -1962,7 +1962,7 @@
 					},
 					{
 						"id": "p_7",
-						"type": "spike",
+						"type": "back_plate",
 						"host": "spine",
 						"u": 753,
 						"ring": 0,
@@ -2632,12 +2632,27 @@
 						"scale": 800,
 						"handles": [],
 						"mirror": false
+					},
+					{
+						"id": "p_8",
+						"type": "tail_stinger",
+						"host": "spine",
+						"u": 1000,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1500,
+						"handles": [],
+						"mirror": false
 					}
 				],
 				"next": {
 					"j": 13,
 					"l": 5,
-					"p": 8,
+					"p": 9,
 					"v": 10
 				},
 				"skin_color": "#a86fd6",
@@ -3045,7 +3060,7 @@
 					},
 					{
 						"id": "p_2",
-						"type": "beak",
+						"type": "beak_hooked",
 						"host": "spine",
 						"u": 0,
 						"ring": 500,
@@ -3060,7 +3075,7 @@
 					},
 					{
 						"id": "p_3",
-						"type": "eye_round",
+						"type": "eye_beady",
 						"host": "spine",
 						"u": 79,
 						"ring": 180,
@@ -3069,7 +3084,7 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 700,
+						"scale": 1100,
 						"handles": [],
 						"mirror": true
 					},
@@ -3105,16 +3120,16 @@
 					},
 					{
 						"id": "p_6",
-						"type": "tail_fluke",
+						"type": "feather_fan",
 						"host": "spine",
-						"u": 1000,
+						"u": 906,
 						"ring": 0,
 						"elev": 0,
 						"height": 0,
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 1300,
+						"scale": 1500,
 						"handles": [],
 						"mirror": false
 					}
@@ -3362,22 +3377,22 @@
 					},
 					{
 						"id": "p_3",
-						"type": "maw",
+						"type": "muzzle_fang",
 						"host": "spine",
 						"u": 0,
 						"ring": 500,
-						"elev": 25,
+						"elev": 15,
 						"height": 0,
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 1050,
+						"scale": 1150,
 						"handles": [],
 						"mirror": false
 					},
 					{
 						"id": "p_4",
-						"type": "eye_slit",
+						"type": "eye_brow",
 						"host": "spine",
 						"u": 69,
 						"ring": 160,
