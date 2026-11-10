@@ -28,6 +28,67 @@
 				}
 			]
 		},
+		"antler_branched": {
+			"type": "antler_branched",
+			"footprint_radius_m": 0.023,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the antler 25% longer above the burr",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "leans 18 degrees further out",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Sweep",
+					"meaning": "swept 18 degrees further back",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "The keys are on AntlerBranched (beam and tines); the pedicle (AntlerBranchedPedicle) stays put under the burr."
+		},
+		"antler_palmate": {
+			"type": "antler_palmate",
+			"footprint_radius_m": 0.025,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Span",
+					"meaning": "the palm and its points 25% broader and longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Tilt",
+					"meaning": "the palm raised 22 degrees",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "The keys are on AntlerPalmate (beam, palm and points); the pedicle (AntlerPalmatePedicle) stays put under the burr."
+		},
 		"barbels": {
 			"type": "barbels",
 			"footprint_radius_m": 0.163,
@@ -85,6 +146,70 @@
 					"default_permille": 0
 				}
 			]
+		},
+		"beak_hooked": {
+			"type": "beak_hooked",
+			"footprint_radius_m": 0.037,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower mandible dropped 26 degrees at the gape",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Hook",
+					"meaning": "the hook's outer half curled 22 degrees further under",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Length",
+					"meaning": "the beak 30% longer past the cere",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "All three keys are on BeakHooked and BeakHookedLower with the same names; the runtime sets them together. H1_Open moves only the lower mandible, H2_Hook only the upper."
+		},
+		"beak_long": {
+			"type": "beak_long",
+			"footprint_radius_m": 0.027,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the bill 35% longer above the skin",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Curve",
+					"meaning": "the decurve about 30 degrees deeper at the tip",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Open",
+					"meaning": "the lower mandible dropped 16 degrees at the gape",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "All three keys are on BeakLong and BeakLongLower with the same names; the runtime sets them together. H3_Open moves only the lower mandible."
 		},
 		"bill": {
 			"type": "bill",
@@ -438,6 +563,34 @@
 			],
 			"handles_note": "Both handles are on Eyes; the pad stays put."
 		},
+		"eye_lashed": {
+			"type": "eye_lashed",
+			"footprint_radius_m": 0.057,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the heavy upper lid and its lashes swing down over the ball to meet the lower lid, which rises a little",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 20% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Blink is on EyeLashedLid and EyeLashedLashes with the same name (the upper lid and its lashes swing down together on a hinge through the eye's corners); H2_Bulge is on the ball, EyeLashed. Both are 0 to 1000 per mille."
+		},
 		"eye_round": {
 			"type": "eye_round",
 			"footprint_radius_m": 0.081,
@@ -521,6 +674,34 @@
 				}
 			],
 			"handles_note": "Both keys are on EyeStalk and Eye with the same names; the runtime sets them together. Above the socket the ball moves rigidly."
+		},
+		"eye_turret": {
+			"type": "eye_turret",
+			"footprint_radius_m": 0.043,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the aperture drawn shut over the pupil",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Reach",
+					"meaning": "the turret about 2.2 cm taller, reaching further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Blink is on EyeTurretCone; H2_Reach is on EyeTurretCone and the ball EyeTurret with the same name: the cone stretches and the ball rides up inside it by the same 2.2 cm."
 		},
 		"fin": {
 			"type": "fin",
@@ -635,6 +816,34 @@
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
 		},
+		"foot_otter": {
+			"type": "foot_otter",
+			"footprint_radius_m": 0.095,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes fanned up to 12 degrees further apart, the outer ones most",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes about 30% longer along their own directions",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on all four meshes (FootOtter, FootOtterWeb, FootOtterPads, FootOtterClaws) with the same names; the runtime sets them together.",
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+		},
 		"foot_paw": {
 			"type": "foot_paw",
 			"footprint_radius_m": 0.073,
@@ -661,6 +870,34 @@
 				}
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.095 m) meets the limb tip."
+		},
+		"foot_pillar": {
+			"type": "foot_pillar",
+			"footprint_radius_m": 0.087,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Wide",
+					"meaning": "the base up to 25% wider, most at the sole",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Nails",
+					"meaning": "the toenails 35% bigger and standing out further",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Wide is on FootPillar, FootPillarSole and FootPillarNails (the sole and nails ride on the widening base); H2_Nails is on FootPillarNails only.",
+			"pivot_note": "Ground part: the sole sits on the pivot; the column is 0.05 m across at the ankle (z 0.09 m), where the limb tip meets it, and closes over its top in a shoulder inside the limb."
 		},
 		"foot_primate": {
 			"type": "foot_primate",
@@ -1251,6 +1488,60 @@
 			],
 			"handles_note": "H1 is on Maw and Teeth (the teeth ride the rim out); H2 is on Teeth only."
 		},
+		"mouth_fangs": {
+			"type": "mouth_fangs",
+			"footprint_radius_m": 0.067,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower jaw drops about 34 degrees and the fangs swing forward to strike",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Tongue",
+					"meaning": "the forked tongue flicked 4 cm further out, its tines spread and lifted",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Open is on all four meshes (MouthFangsLower drops on its hinge, MouthFangs lifts 5 degrees, MouthFangsFangs swing forward about 55 degrees from their roots, MouthFangsTongue drops with the lower jaw); H2_Tongue is on MouthFangsTongue only."
+		},
+		"mouth_sucker": {
+			"type": "mouth_sucker",
+			"footprint_radius_m": 0.034,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Gape",
+					"meaning": "the disc and throat open, the throat about 70% wider and the teeth riding out with it",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Flare",
+					"meaning": "the rim spread about 1.2 cm wider and flatter, as when it latches on",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on MouthSucker, MouthSuckerDisc and MouthSuckerTeeth with the same names; the runtime sets them together. Each tooth rides rigidly with the point of the disc it is rooted on."
+		},
 		"muzzle_primate": {
 			"type": "muzzle_primate",
 			"footprint_radius_m": 0.056,
@@ -1467,6 +1758,68 @@
 				}
 			],
 			"placement_note": "Meant for the underside of the throat, behind the jaw."
+		},
+		"trunk": {
+			"type": "trunk",
+			"footprint_radius_m": 0.054,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the outer half coiled about 100 degrees further under, to grip",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Raise",
+					"meaning": "the trunk lifted forward and up, its tip turned skyward",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Length",
+					"meaning": "the trunk 30% longer past the face",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "All three keys are on Trunk and TrunkTip with the same names; the runtime sets them together. The grip pad and its fingers move rigidly with the trunk's end."
+		},
+		"trunk_short": {
+			"type": "trunk_short",
+			"footprint_radius_m": 0.046,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the snout's end turned about 50 degrees further down over the lip",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "the snout 35% longer past the face",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on TrunkShort and TrunkShortNose with the same names; the runtime sets them together. The nose pad moves rigidly with the snout's end; the lip (TrunkShortLip) has no keys and stays put."
 		},
 		"tusk": {
 			"type": "tusk",
