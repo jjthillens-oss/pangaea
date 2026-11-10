@@ -452,8 +452,57 @@
    "status": "PROPOSED; innovation backlog IB-30 to IB-33 (PR #191), each needs the owner's yes before entering the build backlog",
    "feature": "Triage innovation backlog items IB-30 to IB-33 into milestones once PR #191 merges",
    "evidence": [
-    "docs/research/innovation-backlog.md"
+    "Owner chose \"All four now\" on the Tier 3 decision card, 2026-10-28 01:57 UTC",
+    "IB-30 to IB-33 added to the backlog as their own features"
    ],
+   "passes": true,
+   "deps": []
+  },
+  {
+   "id": "IB-30",
+   "milestone": "M3",
+   "bible": "\u00a77, \u00a712",
+   "tier": 1,
+   "owner": "creature",
+   "status": "CONFIRMED scope (owner chose \"All four now\" on the decision card, 2026-10-28 01:57 UTC); content and numbers PROPOSED until built",
+   "feature": "Body scale range: a lineage can grow toward giant or shrink toward tiny over generations; the phenotype service scales speed, bite reach and energy use. First slice: two size tiers for one rig family, with same-scenario tests",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "IB-31",
+   "milestone": "M3",
+   "bible": "\u00a718",
+   "tier": 1,
+   "owner": "engineering",
+   "status": "CONFIRMED scope (owner chose \"All four now\" on the decision card, 2026-10-28 01:57 UTC); content and numbers PROPOSED until built",
+   "feature": "Graceful sharing: an exported creature lists its parts and opens with marked placeholders when a part is missing, never a refusal. First slice: a save fixture with an unknown part id loads with a placeholder and a warning",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "IB-32",
+   "milestone": "M2",
+   "bible": "\u00a715, \u00a716",
+   "tier": 2,
+   "owner": "art",
+   "status": "CONFIRMED scope (owner chose \"All four now\" on the decision card, 2026-10-28 01:57 UTC); content and numbers PROPOSED until built; the runtime placement boundary in \u00a715 still needs the owner's approval before the slice merges",
+   "feature": "Authored terrain variety: habitats composed per seed from a small set of Blender landforms (river, canyon, island, plateau). First slice: the M2 habitat from four landform pieces, two seeds side by side",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "IB-33",
+   "milestone": "M3",
+   "bible": "\u00a715",
+   "tier": 2,
+   "owner": "menus",
+   "status": "CONFIRMED scope (owner chose \"All four now\" on the decision card, 2026-10-28 01:57 UTC); content and numbers PROPOSED until built",
+   "feature": "Colour and material freedom in the editor: hex entry, colour regions and a pattern layer, held inside the \u00a715 saturation discipline. First slice: hex entry plus two regions on the creature material family",
+   "evidence": [],
    "passes": false,
    "deps": []
   },

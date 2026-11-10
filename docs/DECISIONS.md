@@ -1590,6 +1590,13 @@ Joshua: "we want to make sure that you level up out of the spore world, the orig
 
 test_world_gen's band-1 vs band-0 cold chunk cost check compared the single slowest chunk per size, which read 0.9x to 1.5x on the same tree (one chunk's time is runner noise) and turned main red after #189. Joshua chose (decision card, 05:27 UTC) to compare the mean of the 5 slowest chunks at each size instead, still against 1.35x. The median and p90 rows (1.20x) and the absolute limits are unchanged.
 
+## 2026-10-28 · Innovation items IB-30 to IB-33 enter the build backlog (CONFIRMED scope; content PROPOSED)
+The owner chose "All four now" on the studio's decision card (2026-10-28 01:57 UTC). Body scale range (IB-30), graceful
+sharing (IB-31), authored terrain variety (IB-32) and colour freedom in the editor (IB-33), from the Spore mod research
+(`docs/research/mod-wishes.md`, `docs/research/innovation-backlog.md`), are now backlog features in
+`docs/director/backlog.json`. IB-32's runtime placement boundary (Bible §15) still needs the owner's approval before
+its slice merges. Impact: no era, save schema or pipeline change; each slice follows its owner's usual tier.
+
 ## 2026-11-10: Pool to sea to land goes to main (PR #223)
 
 Joshua in the project chat, 06:03 UTC: "Let's ship it all to main right now, just to get caught up." PR #223 is merged on that instruction: aquatic round 2, the sea's shore crossing (lobe fins, "Crawl onto land", the `.pre-terrestrial` checkpoint), the `shore_piece` asset for the pool's sea edge, the continuity test and smoke, and the first reef settlement rules in `game/domain/reef/` (backlog U-03; not wired into the game).

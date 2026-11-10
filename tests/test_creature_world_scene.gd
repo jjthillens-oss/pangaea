@@ -57,7 +57,14 @@ func test_a_scripted_forward_drive_moves_the_player_and_keeps_the_rig_finite() -
 	for id in world.rival_rigs:
 		check((world.rival_rigs[id] as Node3D).body.transform.origin.is_finite(), "%s's rig is finite" % id)
 	check(world.hud.notice_text() == "", "no notice while walking (%s)" % world.hud.notice_text())
-	check("Bite" in world.hud._hint_text.text and "Evolve" in world.hud._hint_text.text, "the hint names the actions (%s)" % world.hud._hint_text.text)
+	check("Sing" in world.hud._hint_text.text and "Dance" in world.hud._hint_text.text and not ("Bite" in world.hud._hint_text.text)
+			and "Evolve" in world.hud._hint_text.text, "the friend stance's hint names the displays (%s)" % world.hud._hint_text.text)
+	check("FRIEND" in world.hud._stance_text.text, "the stance starts as friend (%s)" % world.hud._stance_text.text)
+	world.toggle_stance()
+	check_eq(world.stance, "foe", "the stance flips")
+	check("Bite" in world.hud._hint_text.text and not ("Sing" in world.hud._hint_text.text) and "FOE" in world.hud._stance_text.text,
+			"the foe stance's hint names the bite (%s)" % world.hud._hint_text.text)
+	world.toggle_stance()
 	check(world.snapshot().has("tick") and int(world.snapshot()["tick"]) == 120, "snapshot carries the sim's")
 	world.clear_intent()
 	world.free()
