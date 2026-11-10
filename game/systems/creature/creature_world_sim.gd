@@ -269,9 +269,12 @@ func tick(intent: Dictionary) -> Array:
 	# 7b. Singing and dancing (the friend path).
 	if me["social_cooldown"] > 0:
 		me["social_cooldown"] -= 1
-	var social := bool(intent.get("social", false))
+	var display := String(intent.get("display", ""))
+	if display.is_empty() and bool(intent.get("social", false)):
+		display = "sing"
+	var social := not display.is_empty()
 	if social and me["alive"] and tuning.has("social"):
-		_sing(events, not _social_held)
+		_sing(events, not _social_held, display)
 	_social_held = social
 	for r in rivals:
 		if r["alive"] and r.get("wants_bite", false):
@@ -494,9 +497,32 @@ func _bite(biter: Dictionary, bodies: Array, events: Array) -> void:
 ## the rival's friendship grows by the player's charm, and at friend_at it joins the player's pack ("befriended",
 ## worth befriend_points). A rival the player has bitten this life will not listen ("snubbed"). `fresh` is the
 ## rising edge of the intent: only then is "nobody to sing to" reported.
-func _sing(events: Array, fresh: bool) -> void:
-	if me["social_cooldown"] > 0:
-		return
+## The four displays of the friend path (PROPOSED, backlog M5-02): like Spore's social mini-game, a creature asks for
+## one display at a time and the player answers with the same one. The keys are input actions creature_social
+## (sing), creature_dance, creature_charm and creature_pose.
+const DISPLAYS := ["sing", "dance", "charm", "pose"]
+
+
+## The display `r` asks for next. Read from the world seed, its id and its friendship so far, with no draw from the
+## sim's stream: the same creature asks the same thing at the same step, and asking never changes the field.
+func wanted_display(r: Dictionary) -> String:
+	var key := "%d:%s:%d" % [world_seed, String(r["id"]), int(round(float(r["friendship"]) * 100.0))]
+	return DISPLAYS[posmod(key.hash(), DISPLAYS.size())]
+
+
+## The creature the player could sing to now (alive, not an ally, in reach and in front), for the HUD's prompt:
+## {who, name, wants, friendship, needed, hostile}, or {} when nobody is in reach.
+func social_target() -> Dictionary:
+	if not tuning.has("social") or not me["alive"]:
+		return {}
+	var r := _social_target()
+	if r.is_empty():
+		return {}
+	return {"who": r["id"], "name": _killer_name(r["id"]), "wants": wanted_display(r), "hostile": r["hostile"],
+			"friendship": float(r["friendship"]), "needed": float(tuning["social"]["friend_at"])}
+
+
+func _social_target() -> Dictionary:
 	var social: Dictionary = tuning["social"]
 	var best := INF
 	var target := {}
@@ -509,6 +535,14 @@ func _sing(events: Array, fresh: bool) -> void:
 			if d < best:
 				best = d
 				target = r
+	return target
+
+
+func _sing(events: Array, fresh: bool, display := "sing") -> void:
+	if me["social_cooldown"] > 0:
+		return
+	var social: Dictionary = tuning["social"]
+	var target := _social_target()
 	if target.is_empty():
 		if fresh:
 			events.append({"kind": "refused", "reason": "Face a creature up close to sing to it"})
@@ -517,9 +551,14 @@ func _sing(events: Array, fresh: bool) -> void:
 	if target["hostile"]:
 		events.append({"kind": "snubbed", "who": target["id"]})
 		return
+	var wanted := wanted_display(target)
+	if display != wanted:
+		events.append({"kind": "missed", "who": target["id"], "name": _killer_name(target["id"]), "wanted": wanted,
+				"did": display})
+		return
 	var needed := float(social["friend_at"])
 	target["friendship"] = minf(needed, float(target["friendship"]) + float(me["stats"].get("charm", 1.0)))
-	events.append({"kind": "charmed", "who": target["id"], "name": _killer_name(target["id"]),
+	events.append({"kind": "charmed", "who": target["id"], "name": _killer_name(target["id"]), "did": display,
 			"friendship": target["friendship"], "needed": needed})
 	if target["friendship"] >= needed:
 		target["ally"] = true

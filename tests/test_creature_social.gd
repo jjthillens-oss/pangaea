@@ -34,7 +34,9 @@ func _gap(sim: Sim) -> float:
 
 
 func _sing_once(sim: Sim) -> Array:
-	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "social": true})
+	# Answer with the display the rival asks for (the copy-the-move mini-game).
+	var wants := sim.wanted_display(sim.rivals[0])
+	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "display": wants})
 	for t in int(ceil(float(tuning["social"]["cooldown_s"]) * 60.0)):
 		events.append_array(sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "social": false}))
 		var r: Dictionary = sim.rivals[0]
@@ -115,3 +117,21 @@ func test_display_organs_add_charm_up_to_a_cap() -> void:
 			* mini(displays, int(social["display_cap"]))), "charm = base + per display organ, capped")
 	check(float(social["base_charm"]) + float(social["per_display_part"]) * int(social["display_cap"])
 			< float(social["friend_at"]), "no body befriends in one song")
+
+
+func test_a_rival_asks_for_one_display_and_a_wrong_one_makes_no_progress() -> void:
+	var sim := _face_to_face()
+	var r: Dictionary = sim.rivals[0]
+	var wants := sim.wanted_display(r)
+	check(Sim.DISPLAYS.has(wants), "it asks for one of the four displays (%s)" % wants)
+	check_eq(sim.wanted_display(r), wants, "asking is stable: no draw from the sim's stream")
+	var target := sim.social_target()
+	check_eq(String(target.get("who", "")), String(r["id"]), "the HUD's target is the rival in front")
+	check_eq(String(target.get("wants", "")), wants, "and names what it wants")
+	var wrong: String = Sim.DISPLAYS[(Sim.DISPLAYS.find(wants) + 1) % Sim.DISPLAYS.size()]
+	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "display": wrong})
+	var missed := events.filter(func(e): return e["kind"] == "missed")
+	check_eq(missed.size(), 1, "a wrong display is a miss")
+	if missed.size() == 1:
+		check_eq(String(missed[0]["wanted"]), wants, "the miss says what it wanted")
+	check_eq(float(r["friendship"]), 0.0, "no progress on a miss")

@@ -45,6 +45,10 @@ const KEY_ACTIONS := {
 	"creature_bite": [KEY_F],
 	"creature_evolve": [KEY_E],
 	"creature_social": [KEY_R],
+	"creature_dance": [KEY_2],
+	"creature_charm": [KEY_3],
+	"creature_pose": [KEY_4],
+	"creature_stance": [KEY_TAB],
 	"toggle_fullscreen": [KEY_F11],
 	"toggle_debug": [KEY_F3],
 	"dev_fill": [KEY_F5],
@@ -76,6 +80,7 @@ const PAD_ACTIONS := {
 	"creature_bite": ["pad:2"],
 	"creature_evolve": ["pad:3"],
 	"creature_social": ["pad:1"],
+	"creature_stance": ["pad:7"],
 }
 
 

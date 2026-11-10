@@ -74,6 +74,18 @@ step = 0.0
 value = 1.0
 show_percentage = false
 
+[node name="StanceText" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+text = "Stance: FRIEND"
+
+[node name="SocialText" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "A hexapod wants you to DANCE"
+
 [node name="Right" type="VBoxContainer" parent="Frame"]
 layout_mode = 2
 size_flags_horizontal = 8

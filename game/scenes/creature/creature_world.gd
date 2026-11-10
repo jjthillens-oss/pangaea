@@ -80,7 +80,12 @@ const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
 ## The friend path's notices (sing and dance, CreatureWorldSim._sing).
-const CHARMED_NOTICE := "You sing to %s: %d / %d"
+const CHARMED_NOTICE := "You %s for %s: %d / %d"
+## A wrong display: the creature asked for another one (the copy-the-move mini-game, CreatureWorldSim.DISPLAYS).
+const MISSED_NOTICE := "Not that: %s wanted you to %s"
+## The display intents by input action, in CreatureWorldSim.DISPLAYS order.
+const DISPLAY_ACTIONS := {"sing": &"creature_social", "dance": &"creature_dance", "charm": &"creature_charm",
+		"pose": &"creature_pose"}
 const BEFRIENDED_NOTICE := "%s joins your pack"
 const SNUBBED_NOTICE := "It won't listen: you bit it"
 const ALLY_LOST_NOTICE := "You bit an ally. It leaves your pack"
@@ -100,6 +105,12 @@ var sim: CreatureWorldSim
 var tuning := {}
 var data := {}
 var player_rig: Node3D
+## The friend-or-foe stance (PROPOSED, backlog M5-02; Spore's stance switch): "friend" plays the four displays and
+## never bites, "foe" bites and never sings. creature_stance (Tab, pad left stick click) flips it; the HUD shows it.
+## Scripted intents (tests, smokes) skip the stance.
+var stance := "friend"
+## A display being acted out: {id: {kind, t}} for the player and a creature answering it, DISPLAY_ANIM_S long.
+var _acting := {}
 var rival_rigs := {}
 var notice := ""
 var mate_beat_s := MATE_BEAT_S
@@ -235,8 +246,67 @@ func _input(event: InputEvent) -> void:
 
 func _read_input() -> Dictionary:
 	var keys := Input.get_vector(&"move_left", &"move_right", &"move_down", &"move_up")
-	return {"move": keys, "bite": Input.is_action_pressed(&"creature_bite"), "evolve": Input.is_action_pressed(&"creature_evolve"),
-			"social": Input.is_action_pressed(&"creature_social")}
+	var friend := stance == "friend"
+	return {"move": keys, "bite": not friend and Input.is_action_pressed(&"creature_bite"),
+			"evolve": Input.is_action_pressed(&"creature_evolve"), "display": _held_display() if friend else ""}
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if InputMap.has_action(&"creature_stance") and event.is_action_pressed(&"creature_stance"):
+		toggle_stance()
+
+
+func toggle_stance() -> void:
+	stance = "foe" if stance == "friend" else "friend"
+	if hud != null and hud.has_method("set_stance"):
+		hud.set_stance(stance)
+
+
+const DISPLAY_ANIM_S := 0.7
+
+
+## The offset a body acting out `kind` takes at `u` (0..1 through the move), on top of its walking pose: sing rears
+## the head up, dance hops and sways, charm bows, pose rises tall and holds.
+static func display_offset(kind: String, u: float) -> Transform3D:
+	var arc := sin(clampf(u, 0.0, 1.0) * PI)
+	match kind:
+		"sing":
+			return Transform3D(Basis(Vector3.RIGHT, 0.22 * arc), Vector3(0.0, 0.05 * arc, 0.0))
+		"dance":
+			return Transform3D(Basis(Vector3.UP, 0.45 * sin(u * TAU * 2.0)), Vector3(0.0, 0.28 * absf(sin(u * TAU)), 0.0))
+		"charm":
+			return Transform3D(Basis(Vector3.RIGHT, -0.2 * arc) * Basis(Vector3.BACK, 0.15 * sin(u * TAU)), Vector3.ZERO)
+		"pose":
+			return Transform3D(Basis(Vector3.RIGHT, 0.3 * arc), Vector3(0.0, 0.18 * arc, 0.0))
+	return Transform3D.IDENTITY
+
+
+func _act(id: String, kind: String) -> void:
+	_acting[id] = {"kind": kind, "t": 0.0}
+
+
+## Adds the acted display to a rig's body after its walk pose is set (the body is top_level, so this is its world
+## transform, turned about its own place).
+func _apply_acting(id: String, rig: Node3D, delta: float) -> void:
+	if not _acting.has(id):
+		return
+	var a: Dictionary = _acting[id]
+	a["t"] = float(a["t"]) + delta
+	var body: Node3D = rig.get("body") if rig != null else null
+	if float(a["t"]) >= DISPLAY_ANIM_S or body == null:
+		_acting.erase(id)
+		return
+	var off := display_offset(String(a["kind"]), float(a["t"]) / DISPLAY_ANIM_S)
+	var xf := body.transform
+	body.transform = Transform3D(xf.basis * off.basis, xf.origin + off.origin)
+
+
+## The display whose key is held ("" when none), the first in DISPLAYS order when several are.
+static func _held_display() -> String:
+	for d: String in DISPLAY_ACTIONS:
+		if InputMap.has_action(DISPLAY_ACTIONS[d]) and Input.is_action_pressed(DISPLAY_ACTIONS[d]):
+			return d
+	return ""
 
 
 ## A camera-relative move (x right, y forward) as the sim's ground direction (x along +X, y along +Z).
@@ -268,10 +338,16 @@ func _on_event(e: Dictionary) -> void:
 			notice = String(e["reason"])
 			hud.show_notice(notice)
 		"charmed":
-			notice = CHARMED_NOTICE % [String(e["name"]), int(e["friendship"]), int(e["needed"])]
+			notice = CHARMED_NOTICE % [String(e.get("did", "sing")), String(e["name"]), int(e["friendship"]), int(e["needed"])]
+			_act(Sim.PLAYER_ID, String(e.get("did", "sing")))
+			_act(String(e["who"]), String(e.get("did", "sing")))   # it joins in
 			hud.show_notice(notice)
 		"befriended":
 			notice = BEFRIENDED_NOTICE % String(e["name"]).capitalize()
+			hud.show_notice(notice)
+		"missed":
+			notice = MISSED_NOTICE % [String(e["name"]).capitalize(), String(e["wanted"])]
+			_act(Sim.PLAYER_ID, String(e["did"]))
 			hud.show_notice(notice)
 		"snubbed":
 			notice = SNUBBED_NOTICE
@@ -493,6 +569,7 @@ func _build_rig(id: String, body: RefCounted, divisions_max: int, color: Color, 
 func _sync_rigs(delta: float) -> void:
 	if player_rig is WalkerRig:
 		_sync_walker(player_rig, Sim.PLAYER_ID, delta, true)
+		_apply_acting(Sim.PLAYER_ID, player_rig, delta)
 	var me: Vector3 = sim.player()["position"]
 	for r in sim.rivals:
 		var rig: Node3D = rival_rigs[r["id"]]
@@ -501,6 +578,7 @@ func _sync_rigs(delta: float) -> void:
 			continue
 		var near := (r["position"] as Vector3).distance_to(me) <= RIVAL_LOD_M
 		_sync_walker(rig, r["id"], delta, near)
+		_apply_acting(String(r["id"]), rig, delta)
 
 
 ## Full: the planner's pose and feet, with an IK solve. Far: only the body's transform, no solve.
