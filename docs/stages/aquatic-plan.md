@@ -388,6 +388,6 @@ handles, and the Aquatic code adds no part records; and a percept-fed species br
    side fins are size steps (0 to 3), each drawn differently.
 6. Round 2's names (PROPOSED, original): glass minnows, reef cleaners, vent glowfins; the lunate, paddle and whip
    tails; the pillar ring, the vent chimney, the nest-side algae bed, the krill swarm and the fallen giant.
-7. Lobe fins in the save (PROPOSED, needs the owner): the fish body gains one optional whole-number key, `limbs`
+7. Lobe fins in the save (PROPOSED; shipped to main on the owner's "ship it all" of 2026-11-10, see docs/DECISIONS.md): the fish body gains one optional whole-number key, `limbs`
    (0 to 2, read as 0 when missing, so every v5 save still loads and the schema version stays 5). It is a new key in
    the saved body, so it is the owner's call like decision 5. Without it the shore can never offer land.

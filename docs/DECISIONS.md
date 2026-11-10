@@ -1589,3 +1589,9 @@ Joshua: "we want to make sure that you level up out of the spore world, the orig
 ## 2026-10-25: band-1 chunk cost max row averages the slowest 5 chunks (Joshua)
 
 test_world_gen's band-1 vs band-0 cold chunk cost check compared the single slowest chunk per size, which read 0.9x to 1.5x on the same tree (one chunk's time is runner noise) and turned main red after #189. Joshua chose (decision card, 05:27 UTC) to compare the mean of the 5 slowest chunks at each size instead, still against 1.35x. The median and p90 rows (1.20x) and the absolute limits are unchanged.
+
+## 2026-11-10: Pool to sea to land goes to main (PR #223)
+
+Joshua in the project chat, 06:03 UTC: "Let's ship it all to main right now, just to get caught up." PR #223 is merged on that instruction: aquatic round 2, the sea's shore crossing (lobe fins, "Crawl onto land", the `.pre-terrestrial` checkpoint), the `shore_piece` asset for the pool's sea edge, the continuity test and smoke, and the first reef settlement rules in `game/domain/reef/` (backlog U-03; not wired into the game).
+
+The PR adds one optional whole-number key to the saved fish body, `limbs` (0 to 2, read as 0 when missing; the schema version stays 5). He was asked about that key on a decision card at 05:55 UTC and did not tap it; the builder read "ship it all" as covering it. That is the builder's reading, not a separate approval, so the key, its numbers and the looks stay PROPOSED until he confirms them, and the key can be taken out again without a migration (a body without it is legal).
