@@ -2,7 +2,8 @@ extends Control
 ## The creature stage's world HUD (PROPOSED, creature-stage-plan.md section 5). It only reads the world scene; it
 ## never changes anything. CreatureWorld mounts it under its UI layer and calls bind(world).
 ##
-##   top left:      the creature's name and generation, the health bar and text
+##   top left:      the creature's name and generation, the health bar and text, and the hunger bar under it
+##                  (hidden when the stage has no hunger tuning; issue #206)
 ##   top right:     points, with a "+N" flash after a meal
 ##   top center:    one notice line at a time: "Return to the nest to evolve", the death notice, "This creature
 ##                  needs legs to walk" (which stays while it is true)
@@ -24,6 +25,8 @@ var _prompts_generation := -1
 var _name_text: Label
 var _health_text: Label
 var _health_bar: ProgressBar
+var _hunger_text: Label
+var _hunger_bar: ProgressBar
 var _points_text: Label
 var _points_flash: Label
 var _notice_panel: PanelContainer
@@ -42,6 +45,8 @@ func _resolve() -> void:
 	_name_text = %NameText
 	_health_text = %HealthText
 	_health_bar = %HealthBar
+	_hunger_text = %HungerText
+	_hunger_bar = %HungerBar
 	_points_text = %PointsText
 	_points_flash = %PointsFlash
 	_notice_panel = %NoticePanel
@@ -99,6 +104,7 @@ func _process(delta: float) -> void:
 	var p: Dictionary = world.sim.player()
 	_health_bar.max_value = maxf(1.0, float(p["max_health"]))
 	_health_bar.value = float(p["health"])
+	_hunger_bar.value = float(p.get("fullness", 1.0))
 	_refresh_t -= delta
 	if _refresh_t <= 0.0:
 		_refresh_t = LABEL_REFRESH_S
@@ -125,6 +131,21 @@ func refresh() -> void:
 	var p: Dictionary = world.sim.player()
 	_health_text.text = "Health %d / %d" % [int(ceil(float(p["health"]))), int(ceil(float(p["max_health"])))]
 	_points_text.text = "Points %d" % int(world.sim.points)
+	var hungry := bool(p.get("hungry", false))
+	_hunger_text.visible = hungry
+	_hunger_bar.visible = hungry
+	_hunger_text.text = hunger_label(float(p.get("fullness", 1.0)))
+
+
+## The hunger line over the bar, in words a player reads at a glance (PROPOSED thresholds).
+static func hunger_label(fullness: float) -> String:
+	if fullness <= 0.0:
+		return "Starving! Eat fruit or meat"
+	if fullness < 0.25:
+		return "Hunger: very hungry"
+	if fullness < 0.6:
+		return "Hunger: hungry"
+	return "Hunger: full"
 
 
 func _refresh_hints() -> void:

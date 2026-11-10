@@ -57,6 +57,8 @@ const FIELD_MARGIN_M := 2.0
 const WORLD_SEED_STRIDE := 1000003
 const FIELD_SEED_OFFSET := 7
 const PICKUP_SEED_OFFSET := 11
+## The killer id of a starved creature (a death notice reads "starved").
+const HUNGER_ID := "hunger"
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
@@ -235,6 +237,7 @@ func tick(intent: Dictionary) -> Array:
 	for r in rivals:
 		if r["alive"]:
 			r["fullness"] = maxf(0.0, r["fullness"] - DT / RIVAL_EMPTY_S)
+	_hunger(me)
 	# Discovery: a living rival inside the player's sight for the first time this life.
 	var deeds: Dictionary = tuning.get("deeds", {})
 	if not deeds.is_empty():
@@ -278,9 +281,12 @@ func tick(intent: Dictionary) -> Array:
 		var lost := points - Rules.points_after_death(points, float(tuning["death"]["points_loss_share"]))
 		points -= lost
 		_drop_meat(me["position"])
-		events.append({"kind": "died", "who": PLAYER_ID, "cause": "killed by %s" % _killer_name(me.get("last_hit_by", "")),
+		var starved: bool = me.get("last_hit_by", "") == HUNGER_ID
+		events.append({"kind": "died", "who": PLAYER_ID,
+				"cause": "starved" if starved else "killed by %s" % _killer_name(me.get("last_hit_by", "")),
 				"by": me.get("last_hit_by", ""), "position": me["position"], "points": points, "points_lost": lost})
 		_respawn(me, nest, 0.0)
+		me["fullness"] = 1.0
 	for r in rivals:
 		if r["alive"] and r["health"] <= 0.0:
 			r["alive"] = false
@@ -407,8 +413,7 @@ func _eat(c: Dictionary, events: Array) -> void:
 					float(tuning["bite"]["no_mouth_fruit_share"]))
 			if is_player:
 				points += worth
-			else:
-				c["fullness"] = minf(1.0, c["fullness"] + FRUIT_FULLNESS)
+			c["fullness"] = minf(1.0, c["fullness"] + FRUIT_FULLNESS)
 			events.append({"kind": "ate", "who": c["id"], "food": "fruit", "points": worth if is_player else 0,
 					"position": f["position"]})
 			return
@@ -420,11 +425,26 @@ func _eat(c: Dictionary, events: Array) -> void:
 			meat.remove_at(i)
 			if is_player:
 				points += int(m["points"])
-			else:
-				c["fullness"] = minf(1.0, c["fullness"] + MEAT_FULLNESS)
+			c["fullness"] = minf(1.0, c["fullness"] + MEAT_FULLNESS)
 			events.append({"kind": "ate", "who": c["id"], "food": "meat", "points": int(m["points"]) if is_player else 0,
 					"position": m["position"]})
 			return
+
+
+## The player's hunger (tuning "hunger", PROPOSED; issue #206): fullness drains from 1 to 0 over empty_s, fruit and
+## meat refill it as they do a rival's, and an empty stomach stops the health regen and costs starve_damage_per_s,
+## so a creature that never eats starves (cause "starved"). A body without legs cannot reach food, so it never gets
+## hungry. Without the tuning block the player never gets hungry.
+## Fullness is not saved: a loaded or respawned creature starts full.
+func _hunger(c: Dictionary) -> void:
+	var cfg: Dictionary = tuning.get("hunger", {})
+	if cfg.is_empty() or not c["alive"] or not c["stats"]["has_legs"]:
+		return
+	c["fullness"] = maxf(0.0, c["fullness"] - DT / float(cfg["empty_s"]))
+	if c["fullness"] <= 0.0:
+		var regen := float(tuning["health"]["regen_per_s"]) * DT
+		c["health"] -= regen + float(cfg["starve_damage_per_s"]) * DT
+		c["last_hit_by"] = HUNGER_ID
 
 
 ## A bite from `biter` on the nearest body in its cone and reach. Nothing at the nest can be bitten: it is the
@@ -577,7 +597,8 @@ func player() -> Dictionary:
 			"max_health": float(s["max_health"]), "speed_mps": float(s["speed_mps"]), "speed_factor": float(s["speed_factor"]), "has_legs": s["has_legs"],
 			"has_mouth": s["has_mouth"], "bite_power": float(s["bite_power"]), "bite_reach_m": float(s["bite_reach_m"]),
 			"sight_m": float(s["sight_m"]), "mass_kg": float(s["mass_kg"]), "cooldown": me["cooldown"],
-			"body_length_m": float(s["body_length_m"]), "at_nest": at_nest()}
+			"body_length_m": float(s["body_length_m"]), "at_nest": at_nest(), "fullness": me["fullness"],
+			"hungry": tuning.has("hunger")}
 
 
 func at_nest() -> bool:

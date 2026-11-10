@@ -264,3 +264,41 @@ func test_rivals_stay_finite_and_inside_the_field_over_a_minute() -> void:
 	check(modes.has("wander"), "rivals wander (%s)" % [modes.keys()])
 	check(sim.player()["position"].is_finite(), "the player is finite")
 	check(events_seen.has("ate"), "someone ate (%s)" % [events_seen.keys()])
+
+
+func test_the_player_gets_hungry_eats_to_refill_and_starves_on_an_empty_stomach() -> void:
+	var sim := make()
+	var idle := {"move": Vector2.ZERO, "bite": false, "evolve": false}
+	check(sim.player()["hungry"], "the stage has hunger")
+	check(is_equal_approx(float(sim.player()["fullness"]), 1.0), "starts full")
+	for t in 600:
+		sim.tick(idle)
+	var after := float(sim.player()["fullness"])
+	check(is_equal_approx(after, 1.0 - 10.0 / float(tuning["hunger"]["empty_s"])), "10 s drains 10 / empty_s (%f)" % after)
+	sim.me["fullness"] = 0.1
+	var bush: Dictionary = sim.fruit[0]
+	sim._place(sim.me, bush["position"] + Vector3(0.0, 0.0, 0.6))
+	sim.tick(idle)
+	check(float(sim.player()["fullness"]) > 0.34, "fruit refills a quarter")
+	# An empty stomach: no regen, health falls, and the death reads "starved", back at the nest and full again.
+	sim._place(sim.me, Vector3(30.0, 0.0, 30.0))
+	sim.me["fullness"] = 0.0
+	sim.me["health"] = 0.5
+	var died := []
+	for t in 120:
+		for e in sim.tick(idle):
+			if e["kind"] == "died" and e["who"] == "player":
+				died.append(e)
+		if not died.is_empty():
+			break
+	check_eq(died.size(), 1, "it starved")
+	if died.size() == 1:
+		check_eq(died[0]["cause"], "starved", "the cause reads starved")
+	check(sim.at_nest() and is_equal_approx(float(sim.player()["fullness"]), 1.0), "back at the nest, full")
+
+
+func test_a_legless_body_never_gets_hungry() -> void:
+	var sim := make("s1_snake")
+	for t in 600:
+		sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false})
+	check(is_equal_approx(float(sim.player()["fullness"]), 1.0), "it cannot reach food, so it does not starve")
