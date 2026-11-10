@@ -298,7 +298,7 @@ def build_eye():
 
     handles = _shape_keys(lid, [("H1_Blink", blink, "the lid ring rolls over the ball to a slit")])
     handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
-    rules = _rules("eye", round(foot, 3), EYE_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye", round(foot, 3), EYE_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "H1 is on Lid, H2 on Eye; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a glossy eyeball with a ringed amber iris in a rolled fleshy lid; blinks on a shape key.",
@@ -1198,7 +1198,7 @@ def build_compound_eye():
 
     handles = _shape_keys(dome, [("H1_Bulge", bulge, "the dome 45% taller"), ("H2_Wide", wide, "the eye 30% wider")])
     _shape_keys(rim, [("H1_Bulge", bulge, ""), ("H2_Wide", wide, "")])
-    rules = _rules("compound_eye", round(foot, 3), CEYE_SINK, "forward_cone", ["spine", "part"], 70, 50)
+    rules = _rules("compound_eye", round(foot, 3), CEYE_SINK, "normal", ["spine", "part"], 70, 50)
     rules["handles"] = handles
     rules["handles_note"] = "Both keys are on CompoundEye and Rim with the same names; the runtime sets them together."
     return {"purpose": "Creature eye part (PROPOSED): a domed compound eye of near-hexagonal facets in a fleshy rim; dark violet lens.",
@@ -1577,7 +1577,7 @@ def build_proboscis():
     handles = _shape_keys(trunk, [("H1_Length", length, "the trunk 40% longer along its path"),
                                   ("H2_Curl", curl, "the outer half curled 55 degrees down and under")])
     _shape_keys(pad, [("H1_Length", length, ""), ("H2_Curl", curl, "")])
-    rules = _rules("proboscis", round(foot, 3), PROB_SINK, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules = _rules("proboscis", round(foot, 3), PROB_SINK, "normal", ["spine"], 40, 30, centerline="required")
     rules["handles"] = handles
     rules["handles_note"] = "Both keys are on Proboscis and ProboscisTip with the same names; the runtime sets them together. The sucker moves rigidly with the trunk's tip."
     return {"purpose": "Creature mouth part (PROPOSED): a ringed trunk-like snout curving forward and down to a flared sucker pad; lengthens and curls on shape keys.",
@@ -1686,7 +1686,7 @@ def build_tusk():
 
     handles = _shape_keys(tusk, [("H1_Length", length, "the tusk 40% longer"),
                                  ("H2_Curve", curve, "the tip curled further out and up")])
-    rules = _rules("tusk", round(foot, 3), TUSK_SINK, "forward_cone", ["spine", "part"], 40, 30, centerline="forbidden", chiral=True)
+    rules = _rules("tusk", round(foot, 3), TUSK_SINK, "normal", ["spine", "part"], 40, 30, centerline="forbidden", chiral=True)
     rules["handles"] = handles
     return {"purpose": "Creature tusk part (PROPOSED): a grooved ivory tusk sweeping forward and out from a fleshy gum, right-hand side (mirrored at bake for the left).",
             "category": "part", "part_type": "tusk", "convention": "creature_art_contract v1",
@@ -2110,7 +2110,7 @@ def build_barbels():
         return base + Matrix.Rotation(math.radians(25.0) * _k(co), 3, "X") @ (co - base)
 
     handles = _shape_keys(obj, [("H1_Length", length, "the whiskers 40% longer"), ("H2_Lift", lift, "the whiskers lifted 25 degrees")])
-    rules = _rules("barbels", round(foot, 3), BARBEL_SINK, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules = _rules("barbels", round(foot, 3), BARBEL_SINK, "normal", ["spine"], 40, 30, centerline="required")
     rules["handles"] = handles
     rules["placement_note"] = "Meant for the chin or snout; the long pair sweeps out and forward, the short pair forward."
     return {"purpose": "Creature sensory part (PROPOSED): two long and two short tapering whisker barbels on a fleshy chin pad.",
@@ -2246,7 +2246,7 @@ def build_eye_slit():
 
     handles = _shape_keys(lid, [("H1_Blink", _blink_fn(SLIT_R, top), "the scaly lids close over the ball to a slit")])
     handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
-    rules = _rules("eye_slit", round(foot + 0.001, 3), SLIT_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye_slit", round(foot + 0.001, 3), SLIT_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "H1 is on Lid, H2 on EyeSlit; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a reptile's gold eye with a slit pupil in an almond of scaly lids; blinks on a shape key.",
@@ -2282,7 +2282,7 @@ def build_eye_round():
 
     handles = _shape_keys(lid, [("H1_Blink", _blink_fn(ROUND_R, top), "the lid rolls over the ball to a slit")])
     handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
-    rules = _rules("eye_round", round(foot + 0.001, 3), ROUND_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye_round", round(foot + 0.001, 3), ROUND_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "H1 is on Lid, H2 on EyeRound; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a big round eye, white with a wide blue iris and a large pupil, in a thin rolled lid; blinks on a shape key.",
@@ -2335,7 +2335,7 @@ def build_eye_cluster():
 
     handles = _shape_keys(eyes, [("H1_Bulge", bulge, "the eyes stand 6 mm prouder of the pad"),
                                  ("H2_Spread", spread, "the eyes 25% further apart across, 15% along")])
-    rules = _rules("eye_cluster", round(foot + 0.001, 3), CLUSTER_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye_cluster", round(foot + 0.001, 3), CLUSTER_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "Both handles are on Eyes; the pad stays put."
     return {"purpose": "Creature eye part (PROPOSED): four glossy black eyes, two big and two small, in a low fleshy pad.",
@@ -4176,7 +4176,7 @@ def build_eye_bulge():
 
     handles = _shape_keys(mound, [("H1_Blink", blink, "the mound's lip rolls up over the ball and shuts")])
     handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
-    rules = _rules("eye_bulge", round(foot + 0.001, 3), BULGE_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye_bulge", round(foot + 0.001, 3), BULGE_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",

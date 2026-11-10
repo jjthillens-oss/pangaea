@@ -66,7 +66,7 @@
     "footprint_radius_m": 0.051,
     "sink_depth_m": 0.015,
     "chiral": false,
-    "orientation": "forward_cone",
+    "orientation": "normal",
     "turn_limit_deg": 60,
     "tilt_limit_deg": 45,
     "centerline": "allowed",

@@ -68,7 +68,7 @@ The `part_*` record fields stay. These are added under `"part_rules"`, with valu
 - `orientation` takes one of three values:
   - `normal`: up follows the skin;
   - `ground`: feet, up follows world +Y at rest;
-  - `forward_cone`: mouths and eyes, forward is clamped to a cone around the head direction.
+  - `forward_cone`: mouths on the snout. The part's up (Blender +Z, where its geometry runs out of the skin) is clamped to a 45° cone around the head direction, and its Blender +Y (the upper jaw's side) keeps to body up. Eyes, tusks, barbels and the proboscis are `normal` since 2026-11-10: they sit on the skin normal with +Y toward the head, which is how they were authored.
 - `footprint_radius_m` is measured at scale 1000‰ in the skin's tangent plane.
 - The record's `triangle_budget` holds for the part at all handle values.
 
@@ -178,7 +178,7 @@ Rendered with gl_compatibility under Xvfb.
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
 | `cpart_beak` | beak, `forward_cone`, centreline required | 286 | H1_Length, H2_Open, H3_Hook | Keeled horn bill on a fleshy gape; the keel is on +X before the runtime's frame turns it |
-| `cpart_eye` | eye, `forward_cone` | 700 | H1_Blink (on `Lid`), H2_Bulge (on `Eye`) | Glossy ball, amber iris, rolled lid; paint_mix 0 on the ball |
+| `cpart_eye` | eye, `normal` | 700 | H1_Blink (on `Lid`), H2_Bulge (on `Eye`) | Glossy ball, amber iris, rolled lid; paint_mix 0 on the ball |
 | `cpart_fin` | fin, `normal` | 506 | H1_Height, H2_Sweep, H3_Ripple | Ray-stiffened membrane swept to the tail; paint_mix 0.9 |
 | `cpart_foot` | foot, `ground`, limb_end | 622 | H1_Spread, H2_Long | Three padded toes with horn nails; the sole on the pivot, the ankle top at z 0.09 |
 | `cpart_horn` | horn, `normal`, chiral | 214 | H1_Length, H2_Curl | Right-hand side only; centreline forbidden |
@@ -191,21 +191,21 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_tail_spikes` | tail_spikes, `normal`, spine, centreline required | 468 | H1_Length, H2_Splay | Two pairs of bony spikes on a horny pad for the tail cap |
 | `cpart_mandibles` | mandibles, `forward_cone`, centreline required | 596 | H1_Open, H2_Length | Two toothed horn jaws on a fleshy collar, meeting across x |
 | `cpart_eye_stalk` | eye_stalk, `normal` | 422 | H1_Length, H2_Droop (on `EyeStalk` and `Eye`) | Eyeball on a soft stalk that bows forward, in a fleshy socket; the pupil looks forward |
-| `cpart_compound_eye` | compound_eye, `forward_cone` | 489 | H1_Bulge, H2_Wide (on `CompoundEye` and `Rim`) | Dark violet faceted dome in a fleshy rim; paint_mix 0 on the lens |
+| `cpart_compound_eye` | compound_eye, `normal` | 489 | H1_Bulge, H2_Wide (on `CompoundEye` and `Rim`) | Dark violet faceted dome in a fleshy rim; paint_mix 0 on the lens |
 | `cpart_maw` | maw, `forward_cone`, centreline required | 540 | H1_Gape (on `Maw` and `Teeth`), H2_Fangs (on `Teeth`) | Rolled lips round a dark throat, ringed with fourteen inward-raking teeth |
 | `cpart_quills` | quills, `normal`, spine | 530 | H1_Raise, H2_Length | Eleven banded quills raked toward the tail from a bristled pad |
 | `cpart_frill` | frill, `normal`, spine, centreline required | 1635 | H1_Fold, H2_Span (on `Frill` and `FrillWeb`) | Seven knobbed horn ribs with a scalloped fleshy web, leaning back toward the tail |
-| `cpart_proboscis` | proboscis, `forward_cone`, centreline required | 928 | H1_Length, H2_Curl (on `Proboscis` and `ProboscisTip`) | Ringed trunk-like snout curving forward and down to a flared sucker pad |
-| `cpart_tusk` | tusk, `forward_cone`, chiral | 720 | H1_Length, H2_Curve | Grooved ivory tusk sweeping forward and out to +X from a rolled gum; paint_mix 0 on the ivory |
+| `cpart_proboscis` | proboscis, `normal`, centreline required | 928 | H1_Length, H2_Curl (on `Proboscis` and `ProboscisTip`) | Ringed trunk-like snout curving forward and down to a flared sucker pad |
+| `cpart_tusk` | tusk, `normal`, chiral | 720 | H1_Length, H2_Curve | Grooved ivory tusk sweeping forward and out to +X from a rolled gum; paint_mix 0 on the ivory |
 | `cpart_gill_fan` | gill_fan, `normal`, chiral, spine | 786 | H1_Spread, H2_Length (on `GillFan` and `GillPlumes`) | Five feathery gill plumes on a fleshy ridge, leaning out to +X; meant for the neck sides |
 | `cpart_flipper` | flipper, `normal`, limb_end | 238 | H1_Length, H2_Width | Flattened swimming paddle out along +Z, broad across x, thin fore-aft; ridges in the normal map |
 | `cpart_hoof` | hoof, `ground`, limb_end | 268 | H1_Wide, H2_Tall | Cloven horn hoof on a short skin pastern; the sole on the pivot, the pastern top at z 0.075 |
 | `cpart_club_tail` | club_tail, `normal`, spine, centreline required | 1053 | H1_Length, H2_Size | Knobbed bony club on a thick fleshy stalk for the tail cap |
 | `cpart_lure` | lure, `normal` | 602 | H1_Length, H2_Droop | Slender stalk arching forward over the head to a glowing pale-cyan bulb (flat emission); paint_mix 0 on the bulb |
-| `cpart_barbels` | barbels, `forward_cone`, centreline required | 476 | H1_Length, H2_Lift | Two long and two short whisker barbels on a fleshy chin pad |
-| `cpart_eye_slit` | eye_slit, `forward_cone` | 870 | H1_Blink (on `Lid`), H2_Bulge (on `EyeSlit`) | Reptile eye: a gold iris with a slit pupil (narrow across y) in an almond of scaly lids; the iris is a second material on the ball's own ring, so its edge stays round |
-| `cpart_eye_round` | eye_round, `forward_cone` | 990 | H1_Blink (on `Lid`), H2_Bulge (on `EyeRound`) | Big round eye standing proud of the skin: white ball, wide blue iris, large pupil, thin rolled lid |
-| `cpart_eye_cluster` | eye_cluster, `forward_cone` | 1004 | H1_Bulge, H2_Spread (on `Eyes`) | Four glossy black eyes, two big and two small, in a low fleshy pad |
+| `cpart_barbels` | barbels, `normal`, centreline required | 476 | H1_Length, H2_Lift | Two long and two short whisker barbels on a fleshy chin pad |
+| `cpart_eye_slit` | eye_slit, `normal` | 870 | H1_Blink (on `Lid`), H2_Bulge (on `EyeSlit`) | Reptile eye: a gold iris with a slit pupil (narrow across y) in an almond of scaly lids; the iris is a second material on the ball's own ring, so its edge stays round |
+| `cpart_eye_round` | eye_round, `normal` | 990 | H1_Blink (on `Lid`), H2_Bulge (on `EyeRound`) | Big round eye standing proud of the skin: white ball, wide blue iris, large pupil, thin rolled lid |
+| `cpart_eye_cluster` | eye_cluster, `normal` | 1004 | H1_Bulge, H2_Spread (on `Eyes`) | Four glossy black eyes, two big and two small, in a low fleshy pad |
 | `cpart_jaw` | jaw, `forward_cone`, centreline required | 492 | H1_Open, H2_Length (on `Jaw` and `Teeth`) | Long toothy snout: scaly upper (+Y) and lower jaws with rows of pointed teeth and pink gums, on a collar |
 | `cpart_bill` | bill, `forward_cone`, centreline required | 912 | H1_Open, H2_Width | Broad flat spoon-tipped bill with nostril dents, a closing seam and a dark nail, on a fleshy gape |
 | `cpart_foot_webbed` | foot_webbed, `ground`, limb_end | 629 | H1_Spread, H2_Long (on `FootWebbed`, `Web` and `Nails`) | Three long slender toes fanned wide with a thin scalloped web between them and small claws; the sole on the pivot, the ankle top at z 0.09 |
