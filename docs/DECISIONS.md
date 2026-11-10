@@ -1596,3 +1596,9 @@ sharing (IB-31), authored terrain variety (IB-32) and colour freedom in the edit
 (`docs/research/mod-wishes.md`, `docs/research/innovation-backlog.md`), are now backlog features in
 `docs/director/backlog.json`. IB-32's runtime placement boundary (Bible §15) still needs the owner's approval before
 its slice merges. Impact: no era, save schema or pipeline change; each slice follows its owner's usual tier.
+
+## 2026-11-10: Pool to sea to land goes to main (PR #223)
+
+Joshua in the project chat, 06:03 UTC: "Let's ship it all to main right now, just to get caught up." PR #223 is merged on that instruction: aquatic round 2, the sea's shore crossing (lobe fins, "Crawl onto land", the `.pre-terrestrial` checkpoint), the `shore_piece` asset for the pool's sea edge, the continuity test and smoke, and the first reef settlement rules in `game/domain/reef/` (backlog U-03; not wired into the game).
+
+The PR adds one optional whole-number key to the saved fish body, `limbs` (0 to 2, read as 0 when missing; the schema version stays 5). He was asked about that key on a decision card at 05:55 UTC and did not tap it; the builder read "ship it all" as covering it. That is the builder's reading, not a separate approval, so the key, its numbers and the looks stay PROPOSED until he confirms them, and the key can be taken out again without a migration (a body without it is legal).

@@ -1,0 +1,73 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[sub_resource type="Shader" id="Shader_shore_light"]
+code = "// The shore's light (shore_piece: the Shaft, the Reach ring and the Glow on the sand), additive and
+// unlit, no fog. Written by tools/blender/make_shore_piece.py. COLOR_0 (LightWeight, raw) tells the
+// parts apart: red is the part's strength, green 1 for the ring, blue 1 for the glow, else the shaft.
+// glTF flips UV v, so v below runs as authored in Blender: up the shaft from the sand (0) to its top
+// (1), across the ring from inside (0) to outside (1), out across the glow from its centre (0) to its
+// rim (1). The shaft is brightest where it stands on the sand and fades upward and toward its
+// silhouette; the ring is a soft band; the glow is even in the middle and soft at the rim. The gains
+// are the Forward+ look; the view scales them for Compatibility (renderer_gain: x the shaft and the
+// glow, y the ring) and pulses a duplicate's strength, never this file.
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
+
+uniform vec4 tint : source_color = vec4(1.0, 0.831, 0.525, 1.0);
+uniform float shaft_gain = 0.85;
+uniform float ring_gain = 0.35;
+uniform float shaft_fade = 0.4;
+uniform float shaft_edge = 1.5;
+uniform float near_top = 0.6;
+uniform float shaft_foot = 0.25;
+uniform float far_foot = 0.04;
+uniform float glow_gain = 0.12;
+uniform float glow_core = 0.7;
+uniform vec2 renderer_gain = vec2(1.0, 1.0);
+uniform float strength = 1.0;
+
+varying float near_side;
+
+void vertex() {
+	// 1 on the shaft's side toward the camera, 0 on the far side: the near wall stands between the
+	// camera and whatever is in the light, so it fades out from the sand up to near_top (v) and the
+	// far wall carries the column. The near wall also fades in from the sand over shaft_foot, so its
+	// foot draws no outline across the glow; the far wall rises behind the glow's rim on screen and
+	// fades in over far_foot only, so no unlit band is left between them.
+	vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
+	vec2 out_dir = VERTEX.xz;
+	near_side = length(out_dir) > 0.0001 && length(eye.xz) > 0.0001
+		? smoothstep(-0.2, 0.4, dot(normalize(out_dir), normalize(eye.xz))) : 0.0;
+}
+
+void fragment() {
+	float v = 1.0 - UV.y;
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
+	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
+	float foot = smoothstep(0.0, max(mix(far_foot, shaft_foot, near_side), 0.001), v);
+	float shaft = foot * rise * near_cut * pow(facing, shaft_edge);
+	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
+	float glow = 1.0 - smoothstep(glow_core, 1.0, v);
+	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
+	float part = mix(mix(shaft * g.x, band * g.y, COLOR.g), glow * glow_gain * renderer_gain.x, COLOR.b);
+	ALBEDO = tint.rgb * (strength * COLOR.r * part);
+}
+"
+
+[resource]
+resource_name = "M_ShoreLight"
+render_priority = 0
+shader = SubResource("Shader_shore_light")
+shader_parameter/tint = Color(1.0, 0.831, 0.525, 1)
+shader_parameter/shaft_gain = 0.85
+shader_parameter/ring_gain = 0.35
+shader_parameter/shaft_fade = 0.4
+shader_parameter/shaft_edge = 1.5
+shader_parameter/near_top = 0.6
+shader_parameter/shaft_foot = 0.25
+shader_parameter/far_foot = 0.04
+shader_parameter/glow_gain = 0.12
+shader_parameter/glow_core = 0.7
+shader_parameter/renderer_gain = Vector2(1, 1)
+shader_parameter/strength = 1.0
