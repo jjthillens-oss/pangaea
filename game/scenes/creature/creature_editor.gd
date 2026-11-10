@@ -1237,6 +1237,8 @@ func _refresh_hud() -> void:
 		var s: Dictionary = _stats_script.of(session.working, part_rules, CreatureData.gait_table(), _stage_tuning)
 		lines.append("Speed  %.1f m/s   ·   health  %d" % [float(s.get("speed_mps", 0.0)), int(s.get("max_health", 0))])
 		lines.append("Bite  %d   ·   sight  %.0f m" % [int(s.get("bite_power", 0)), float(s.get("sight_m", 0.0))])
+		if int(s.get("swim_parts", 0)) > 0 and bool(s.get("has_legs", false)):
+			lines.append(SWIM_DRAG_TEXT % [int(s["swim_parts"]), roundi((1.0 - float(s["land_factor"])) * 100.0)])
 	var gone := PartManifest.placeholder_ids(session.working, part_rules).size()
 	if gone > 0:
 		lines.append("Missing parts  %d (kept in the save)" % gone)

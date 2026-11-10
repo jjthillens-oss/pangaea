@@ -249,7 +249,11 @@ func test_the_card_tells_what_each_kind_of_part_does() -> void:
 			"weapon":
 				check(_card_has(texts, Effects.NEEDS_MOUTH), "a %s on a mouthless body says it needs a mouth" % type)
 			"foot", "hand":
-				check(_card_has(texts, Effects.NO_STAT_CHANGE), "a %s changes the look only" % type)
+				# A swim part (tuning land_drag.per_part: the flipper) slows the land run, so its card shows the speed.
+				if (tuning.get("land_drag", {}).get("per_part", {}) as Dictionary).has(type):
+					check(_card_has(texts, "Speed"), "a %s, a swim part, slows the land run" % type)
+				else:
+					check(_card_has(texts, Effects.NO_STAT_CHANGE), "a %s changes the look only" % type)
 			"mouth":
 				check(_card_has(texts, "Bite"), "a %s adds bite" % type)
 			"detail":

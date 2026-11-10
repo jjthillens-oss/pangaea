@@ -1620,6 +1620,54 @@ sharing (IB-31), authored terrain variety (IB-32) and colour freedom in the edit
 `docs/director/backlog.json`. IB-32's runtime placement boundary (Bible §15) still needs the owner's approval before
 its slice merges. Impact: no era, save schema or pipeline change; each slice follows its owner's usual tier.
 
+## 2026-10-25 · Swim parts slow a creature on land (PROPOSED; IMPLEMENTED)
+
+- **Owner direction (Joshua, 2026-10-25 05:43)**: traits matter both ways. "If they leave their fins and
+  their floppers on, they're slower on land", and a player who wants to be faster on land changes the
+  creature in the editor.
+- **Rule** (`CreatureStats.land_factor`, tuning `creature_stage.json` "land_drag"): each fin pair, tail
+  fluke and flipper takes per_part x scale off the top land speed (fin 0.06, fluke 0.10, flipper 0.08 at
+  scale 1; a mirrored part twice), never below 0.5 of what the legs allow. A lone centerline fin (the
+  starter quadruped's back fin) rides clear of the legs and does not drag. The parts add no mass. The
+  editor's stats show "Swim parts N · land speed -X%" while a walking body keeps them.
+- A fish that crawls ashore (aquatic PR #200) arrives with its fluke and side fins, so it starts slow on
+  land until the player trades them for legs. Water access later (rivers, the submarine return in the
+  aquatic path) gives the same parts their payoff.
+
+## 2026-10-25 · Stage music: a soundtrack for each stage and the editors (PROPOSED; IMPLEMENTED)
+
+Joshua asked for lush, beautiful instrumentals like Spore's, not thin synth (2026-10-23 08:09), and the
+coordinator asked for a score per stage. The music stays human-made CC0 tracks from OpenGameArt, uploaded
+before 2024, each logged with its URL, author and upload date in its record; nothing is generated or copied.
+Every track is PROPOSED until Joshua listens (preview: `pangaea/audio/stage_music_preview.mp3` in the project files).
+- **Stages.** `Soundtrack.STAGES` gives each stage a calm playlist and a danger track: the cell keeps its
+  four tracks and *Frenzied Swimming*; the Aquatic stage plays *Underwater Theme* (CleytonKauffman),
+  *Underwater World* (Indieteur), *Deep Sea* (Umplix) and *Underwater Theme, 2nd variation* (Spring Spring),
+  with *Frenzied Swimming* for danger; the creature stage plays *Beautiful Forest [Orchestra]* and *New Sunrise*
+  (nene), *Fantasy Orchestral Theme* (Joth) and *At Home - Orchestral* (Wolfgang_), with *Determined Pursuit*
+  (Emma_MA) for danger. `set_stage` fades the old stage out (about 2 s) before the new one starts. `main.gd`
+  sets the cell stage for the pool and the creature stage for the creature stage; the Aquatic stage calls
+  `set_stage("aquatic")` itself. The title keeps *Magic Space*.
+- **Editors.** `set_editor(true)` brings in an editor track (*Happy Lullaby* and *Calm Piano 1 (Vaporware)* by
+  cynicmusic, *Heavenly Loop* by isaiah658, taken in turn), looped, with the low-pass open; the stage's calm
+  track pauses under it and resumes where it was. `main.gd` does this for the cell editor; the creature
+  editor calls it through the `soundtrack` group.
+- **Levels.** `TRACK_GAIN_DB` evens the tracks out near −16 LUFS (danger −14), at most ±6 dB, so the files
+  stay the composers' own. Three WAV downloads are re-encoded to Ogg Vorbis q5 to keep the repo small
+  (logged in their records).
+- Bible 20's "music grows with scale and keeps its motifs" still waits for a composed theme.
+
+## 2026-10-25 · Creature and Aquatic stage sound effects (PROPOSED; IMPLEMENTED, not yet hooked)
+
+Original effects rendered from code like the cell's: `game/scenes/audio/stage_synth.gd` holds 31 recipes
+(creature `cr_`: steps by foot type paw, hoof, claw and webbed; bite, hurt, die, eating fruit and meat, sing,
+befriend, snub, mate, part pickup, earn, refuse; Aquatic `aq_`: burst, pressure warning and clear, the lancer's
+investigate, pursue and give-up, the drifter's warning, bite, hurt, die, eat, signal and its answer, mate, found,
+refuse) and `make_cell_audio.gd` renders them with three new ambience loops (`amb_meadow`, `amb_open_water`,
+`amb_fin_swim`). `CreatureAudio` and `AquaticAudio` (both `StageAudio`) map their sims' events to cues, set the
+soundtrack's stage and danger mood and open the editor music. The stages still have to add the node and call
+`on_event`, `step`, `set_motion` and `burst` (their threads own that code). PROPOSED until Joshua listens.
+
 ## 2026-11-10: Pool to sea to land goes to main (PR #223)
 
 Joshua in the project chat, 06:03 UTC: "Let's ship it all to main right now, just to get caught up." PR #223 is merged on that instruction: aquatic round 2, the sea's shore crossing (lobe fins, "Crawl onto land", the `.pre-terrestrial` checkpoint), the `shore_piece` asset for the pool's sea edge, the continuity test and smoke, and the first reef settlement rules in `game/domain/reef/` (backlog U-03; not wired into the game).

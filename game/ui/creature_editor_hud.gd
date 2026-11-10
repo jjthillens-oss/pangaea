@@ -25,6 +25,9 @@ signal random_requested
 signal head_shape_changed(key: String, value: int)
 ## A head shape slider drag began (true) or ended (false), so the editor makes the drag one undo step.
 signal head_shape_drag(started: bool)
+## Editor-ease: the Symmetry toggle (on: new parts and limbs off the middle line come as mirrored pairs). The toggle
+## shows only when something is connected to this at setup() (GitHub issue #204 asks the editor to connect it).
+signal symmetry_toggled(on: bool)
 ## A Body size button was pressed (IB-30): -1 smaller, +1 bigger.
 signal body_size_step(direction: int)
 

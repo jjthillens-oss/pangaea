@@ -16,6 +16,13 @@ extends RefCounted
 ##   size_tiers, whose multipliers are applied here and nowhere else: speed_factor (and so speed_mps) takes the tier's
 ##   speed, bite_reach_m its bite_reach; energy_use_factor and turn_factor are reported for the world to use. The
 ##   middle tier is all ones. Without a "size_tiers" block, all ones and size_tier "".
+##
+## Swim parts drag on land (owner direction, 2026-10-25: "if they leave their fins and their floppers on, they're
+## slower on land"): each part whose type is in tuning land_drag.per_part (fins, tail flukes, flippers) takes
+## per_part[type] * scale^land_drag.scale_power off the top speed, a mirrored part twice, and the speed never falls
+## below land_drag.floor of what the legs allow. Types in land_drag.paired_only (fin) drag only as a mirrored pair: a
+## lone centerline fin rides on the back clear of the legs. land_factor is that multiplier; the player trades the parts away in
+## the editor to run faster.
 
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
@@ -39,7 +46,7 @@ const TOUCH_REACH_M := 0.15
 
 
 ## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, speed_factor,
-## strength_factor, size_tier, energy_use_factor, turn_factor, charm, has_mouth, has_legs,
+## strength_factor, land_factor, swim_parts, size_tier, energy_use_factor, turn_factor, charm, has_mouth, has_legs,
 ## leg_length_m, mouths, eyes, weapons, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
 ## allows (the run band's Froude number on the shortest leg) times speed_factor and land_factor; the walk is 0.3 of it, as the lab's
 ## drives.
@@ -48,6 +55,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 	var mass := mass_kg(body, float(tuning["mass"]["kg_per_m3"]))
 	var tier: Dictionary = SizeTiers.of_body(body, tuning.get("size_tiers", {}))
 	var speed_k := speed_factor(mass, tuning) * float(tier["speed"])
+	var land_k := land_factor(body, tuning)
 	var strength_k := strength_factor(mass, tuning)
 	var mouth_types := types_with_role(part_rules, MOUTH_ROLE)
 	var mouths := count_parts(body, mouth_types, part_rules)
@@ -97,6 +105,8 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		"cadence_hz": cadence,
 		"speed_factor": speed_k,
 		"strength_factor": strength_k,
+		"land_factor": land_k,
+		"swim_parts": swim_parts(body, tuning),
 		"size_tier": tier["id"],
 		"energy_use_factor": tier["energy_use"],
 		"turn_factor": tier["turn"],
