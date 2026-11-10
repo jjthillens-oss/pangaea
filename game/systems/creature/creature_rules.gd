@@ -10,6 +10,7 @@ extends RefCounted
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
+const PartManifest := preload("res://game/domain/creature/part_manifest.gd")
 
 const STARTER_BODY := "quadruped"
 const DEFAULT_NAME := "Newcomer"
@@ -85,6 +86,17 @@ func body_problems(body: Dictionary) -> PackedStringArray:
 	var out: PackedStringArray = desc.validate(rules)
 	out.append_array(desc.validate_parts(rules, part_rules))
 	return out
+
+
+## The part types a body dictionary uses that this build has no rules for, sorted (IB-31, PROPOSED). Such a body
+## still loads; its parts of these types are placeholders.
+func missing_parts(body: Dictionary) -> PackedStringArray:
+	return PartManifest.missing(BodyCodec.from_dict(body), part_rules)
+
+
+## One readable warning for each placeholder part of a body dictionary; empty when every part is known.
+func body_warnings(body: Dictionary) -> PackedStringArray:
+	return PartManifest.warnings(BodyCodec.from_dict(body), part_rules)
 
 
 ## body_problems as the Callable SaveGame.validate takes.

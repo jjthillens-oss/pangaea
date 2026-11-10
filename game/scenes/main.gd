@@ -166,6 +166,7 @@ func open_session(slot: String) -> void:
 
 func show_start() -> void:
 	_clear_screen()
+	_music("", "title")
 	start_screen = START_SCREEN_SCENE.instantiate()
 	add_child(start_screen)
 	start_screen.setup(session.peek_slot(), session.catalog, SaveSlots.number_of(session.slot))
@@ -205,6 +206,7 @@ func _way_back() -> String:
 ## the title.
 func open_creature_stage() -> CreatureStage:
 	_clear_screen()
+	_music("creature", "calm")
 	creature_stage = CREATURE_STAGE_SCENE.instantiate()
 	add_child(creature_stage)
 	creature_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
@@ -222,6 +224,7 @@ func open_aquatic_stage() -> AquaticStage:
 	aquatic_stage.name = "AquaticStage"
 	add_child(aquatic_stage)
 	aquatic_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
+	aquatic_stage.ashore_requested.connect(crawl_out_of_the_sea, CONNECT_DEFERRED)
 	aquatic_stage.setup(session.slot, flags.seed_value if flags.seed_value >= 0 else randi())
 	_set_screen(aquatic_stage)
 	return aquatic_stage
@@ -309,6 +312,9 @@ func open_cell_editor() -> CellEditor:
 		chase["name"] = str(session.sim.species.species.get(chase.species, {}).get("name", "hunter"))
 	cell_editor.open(session.sim.save, session.sim.catalog, session.sim.state, chase)
 	cell_editor.closed.connect(_on_cell_editor_closed, CONNECT_DEFERRED)
+	var soundtrack := _soundtrack()
+	if soundtrack != null:
+		soundtrack.set_editor(true)
 	return cell_editor
 
 
@@ -318,6 +324,9 @@ func _on_cell_editor_closed(committed: bool) -> void:
 	if cell_editor != null:
 		cell_editor.queue_free()
 		cell_editor = null
+	var soundtrack := _soundtrack()
+	if soundtrack != null:
+		soundtrack.set_editor(false)
 	if pool == null:
 		return
 	hud.visible = true
@@ -423,6 +432,34 @@ func _arrive_at_sea() -> void:
 	# The Aquatic stage's arrival card (aquatic plan), once it has one.
 	if aquatic_stage != null and aquatic_stage.has_method(&"show_arrival"):
 		aquatic_stage.call(&"show_arrival", SEA_ARRIVAL_TEXT)
+
+
+## "Crawl onto land" at the Aquatic stage's shore (aquatic plan section 7): the stage has saved; the slot crosses
+## from the sea to land (EraTransition, a .pre-terrestrial checkpoint) with the fish's land body
+## (AquaticLineage.to_creature), and the creature stage opens. A failure says why and the fish stays in the sea.
+func crawl_out_of_the_sea() -> Dictionary:
+	var loaded := session.persistence.load_from(session.slot)
+	if not loaded.ok:
+		_alert("Could not go ashore", loaded.errors)
+		return {"ok": false, "errors": loaded.errors}
+	var save: SaveGame = loaded.save
+	# A lineage that swam in from the title's Aquatic stage preview is still in the cell's era on the slot: it is in
+	# the sea now, so it crosses from there (the checkpoint keeps it in the sea).
+	if save.era == ShoreLink.FROM_ERA:
+		save.era = ShoreLink.TO_ERA
+	var fish: Dictionary = save.aquatic.get("body", aquatic_stage.sim.player.body if aquatic_stage != null else {})
+	# The transition contract's capability (Bible section 4): only a body that can crawl leaves the water, whoever asks.
+	if fish.is_empty() or not bool(AquaticBody.stats(fish, AquaticLineage.rules().body).can_crawl):
+		var why := PackedStringArray(["Your line needs strong lobe fins to crawl ashore: evolve them at the nest."])
+		_alert("Could not go ashore", why)
+		return {"ok": false, "errors": why}
+	var result := EraTransition.cross(save, session.slot, session.persistence,
+			{"creature": AquaticLineage.to_creature(fish, save.genome)})
+	if not result.ok:
+		_alert("Could not go ashore", result.errors)
+		return result
+	arrive_ashore()
+	return result
 
 
 ## The lineage came ashore from the sea (the Aquatic stage's crossing, EraTransition): the creature stage opens with
@@ -655,6 +692,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _open_pool() -> void:
 	_clear_screen()
+	_music("cell", "calm")
 	pool = POOL_SCENE.instantiate()
 	pool.player_memory = player_memory
 	add_child(pool)
@@ -685,6 +723,20 @@ func _open_pool() -> void:
 	death_notice.chosen.connect(func(_choice: String): continue_after_death())
 	_apply_pool_settings()
 	_set_screen(pool)
+
+
+## The soundtrack follows the screen: a stage's music ("" keeps the stage) in a mood, no editor open.
+## In the pool, CellAudio then sets the mood each frame.
+func _music(stage: String, mood: String) -> void:
+	var soundtrack := _soundtrack()
+	if soundtrack != null:
+		soundtrack.set_editor(false)
+		soundtrack.set_stage(stage)
+		soundtrack.set_mood(mood)
+
+
+func _soundtrack() -> Soundtrack:
+	return get_tree().get_first_node_in_group(Soundtrack.GROUP) as Soundtrack if is_inside_tree() else null
 
 
 func _clear_screen() -> void:

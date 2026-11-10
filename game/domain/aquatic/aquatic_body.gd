@@ -1,15 +1,22 @@
 class_name AquaticBody
 extends RefCounted
 ## An aquatic body and its swim stats (aquatic plan sections 4 and 8, PROPOSED). The body is plain data:
-##   {"length", "girth": 1..3, "tail": "fluke" | "ribbon", "tail_size": 1..3, "fins": 0..3, "dorsal": 0..2,
-##    "bladder": 0..3, "sense": "eyes" | "barbels" | "lure", "mouth": "filter" | "jaw" | "both", "hue": 0..1}
+##   {"length", "girth": 1..3, "tail": one of the rules' "tails" (fluke, ribbon, lunate, paddle, whip), "tail_size": 1..3,
+##    "fins": 0..3, "dorsal": 0..2, "bladder": 0..3, "sense": "eyes" | "barbels" | "lure",
+##    "mouth": "filter" | "jaw" | "both", "hue": 0..1,
+##    "limbs": 0..2 (optional, 0 when missing: lobe fins; at the rules' crawl_limbs the fish can crawl ashore)}
 ## and every stat comes from it through the tuning in game/data/aquatic/aquatic_rules.json ("body"), so play, the
 ## editor's preview and the bots read one answer (Bible §12). Pure rules: no scene, UI or file access.
+## Each tail reads its own row of every per-tail table (thrust, turn_speed_penalty "<tail>_per_size", tail_drag,
+## tail_burst, tail_cost), so a tail is a tradeoff across pick-up, top speed, burst, turning and swim cost, never a
+## plain upgrade (Bible §2: a single part must not solve every problem).
 ## to_description() builds the creature stage's body description for the generated skin, so the fish is drawn by
 ## the same skin and Blender-authored parts as the creature stage.
 
 const KEYS: PackedStringArray = ["length", "girth", "tail", "tail_size", "fins", "dorsal", "bladder", "sense", "mouth", "hue"]
 const INT_KEYS: PackedStringArray = ["length", "girth", "tail_size", "fins", "dorsal", "bladder"]
+## Keys a body may leave out (a body saved before they existed): their value is 0.
+const OPTIONAL_INT_KEYS: PackedStringArray = ["limbs"]
 const BodyDescription := preload("res://game/domain/creature/body_description.gd")
 
 ## The two starting variants (plan section 8): the darter is built for straight-line speed, the hoverer for
@@ -20,6 +27,26 @@ const DARTER := {"length": 3, "girth": 1, "tail": "fluke", "tail_size": 3, "fins
 const HOVERER := {"length": 1, "girth": 2, "tail": "ribbon", "tail_size": 1, "fins": 3, "dorsal": 1, "bladder": 2,
 		"sense": "eyes", "mouth": "both", "hue": 0.55}
 
+
+## How each tail is drawn (aquatic-r2, PROPOSED art mapping onto recorded parts; fish-only tail parts are an open
+## issue): per piece, the part, where it sits on the spine (u, ring), its roll, its scale (scale + per_size x
+## tail_size, per mille) and its handles. A fin's blade lies along its up (the skin normal) and the head direction, so
+## at roll 0 a fin on the tail cap or the back stands upright along the body, as a fish's does. Fluke: the plain
+## flat blade. Lunate: the blade at full span, a wide crescent for cruising. Ribbon: a small upright tail fin and a
+## long rippling fin under the belly that does the work. Paddle: a broad forked fan of two tall lobes for the sprint.
+## Whip: one long raked, rippling upper lobe with a low keel fin under the tail stalk.
+const TAIL_ART := {
+	"fluke": [{"part": "tail_fluke", "u": 1000, "ring": 0, "roll": 0, "scale": 550, "per_size": 180, "handles": []}],
+	"ribbon": [{"part": "fin", "u": 1000, "ring": 0, "roll": 0, "scale": 480, "per_size": 150, "handles": [300, 0, 1000]},
+			{"part": "fin", "u": 700, "ring": 500, "roll": 0, "scale": 380, "per_size": 120, "handles": [0, 600, 1000]}],
+	"lunate": [{"part": "tail_fluke", "u": 1000, "ring": 0, "roll": 0, "scale": 600, "per_size": 190, "handles": [1000, 0]}],
+	"paddle": [{"part": "fin", "u": 1000, "ring": 0, "elev": 35, "roll": 0, "scale": 500, "per_size": 170, "handles": [1000, 0, 0]},
+			{"part": "fin", "u": 1000, "ring": 500, "elev": 35, "roll": 0, "scale": 500, "per_size": 170, "handles": [1000, 0, 0]}],
+	"whip": [{"part": "fin", "u": 1000, "ring": 0, "elev": 40, "roll": 0, "scale": 600, "per_size": 190, "handles": [0, 1000, 600]},
+			{"part": "fin", "u": 820, "ring": 500, "roll": 0, "scale": 300, "per_size": 110, "handles": [0, 1000, 600]}],
+}
+## The pectoral fins at each fin step: plain, then taller and raked, then a long wing-swept fin.
+const PECTORAL_HANDLES := [[0, 0, 0], [500, 300, 0], [1000, 1000, 0]]
 
 ## The body's problems against the rules (empty when legal): a missing key, a number out of range, an unknown choice.
 static func validate(body: Dictionary, rules: Dictionary) -> PackedStringArray:
@@ -32,6 +59,11 @@ static func validate(body: Dictionary, rules: Dictionary) -> PackedStringArray:
 		return out
 	for key in INT_KEYS:
 		var v: Variant = body[key]
+		var r: Array = ranges.get(key, [0, 0])
+		if not (v is int or (v is float and v == floorf(v))) or int(v) < int(r[0]) or int(v) > int(r[1]):
+			out.append("%s must be a whole number from %d to %d." % [key.capitalize(), int(r[0]), int(r[1])])
+	for key in OPTIONAL_INT_KEYS:
+		var v: Variant = body.get(key, 0)
 		var r: Array = ranges.get(key, [0, 0])
 		if not (v is int or (v is float and v == floorf(v))) or int(v) < int(r[0]) or int(v) > int(r[1]):
 			out.append("%s must be a whole number from %d to %d." % [key.capitalize(), int(r[0]), int(r[1])])
@@ -52,19 +84,24 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 	var fins := int(body.fins)
 	var dorsal := int(body.dorsal)
 	var bladder := int(body.bladder)
+	var limbs := int(body.get("limbs", 0))
 	var tail := String(body.tail)
 	var sense := String(body.sense)
 	var m: Dictionary = rules.mass
 	var mass: float = m.base + m.per_length * length + m.per_girth * girth + m.per_tail * tail_size + m.per_fin * fins
+	mass += float(m.get("per_limb", 0.0)) * limbs
 	var t: Dictionary = rules.thrust[tail]
 	var thrust: float = float(t.base) + float(t.per_size) * tail_size
 	var d: Dictionary = rules.drag
-	var drag: float = d.base + d.per_fin * fins + d.per_dorsal * dorsal + d.per_girth * girth + d.per_length * length
+	var drag: float = maxf(0.2, d.base + d.per_fin * fins + d.per_dorsal * dorsal + d.per_girth * girth
+			+ d.per_length * length + float(rules.get("tail_drag", {}).get(tail, 0.0))
+			+ float(d.get("per_limb", 0.0)) * limbs)
 	var accel := thrust / mass
 	var tr: Dictionary = rules.turn
 	var turn: float = maxf(0.4, tr.base + tr.per_fin * fins + tr.per_dorsal * dorsal + tr.per_length * length)
 	var tp: Dictionary = rules.turn_speed_penalty
-	var penalty: float = (tp.fluke_per_size if tail == "fluke" else tp.ribbon_per_size) * tail_size + tp.per_length * length
+	var penalty: float = float(tp[tail + "_per_size"]) * tail_size + tp.per_length * length
+	var burst_share: float = float(rules.burst.thrust_share) * float(rules.get("tail_burst", {}).get(tail, 1.0))
 	var tm: Dictionary = rules.trim
 	var drift: Array = rules.idle_drift
 	var rd: Dictionary = rules.rated_depth
@@ -76,7 +113,9 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 		"accel": accel,
 		"drag": drag,
 		"top_speed": top,
-		"burst_speed": top * float(rules.burst.thrust_share),
+		## The thrust multiplier a burst gives this tail (the sim's burst uses it, so the editor's "Burst" is the water's).
+		"burst_share": burst_share,
+		"burst_speed": top * burst_share,
 		"turn_rate": turn,
 		"turn_penalty": penalty,
 		## Radius of the tightest turn at top speed (v / yaw rate at v), the editor's "turn" reading.
@@ -88,7 +127,10 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 		"dark_sense": sense in rules.get("dark_sense", []),
 		"lure": sense == "lure",
 		"upkeep": up.base + up.per_length * length + up.per_girth * girth + float(up.get(sense, 0.0)),
-		"thrust_cost": float(rules.thrust_cost.per_tail) * tail_size,
+		## Lobe fins strong enough to crawl ashore (plan section 7): the shore offers land only then.
+		"limbs": limbs,
+		"can_crawl": limbs >= int(rules.get("crawl_limbs", 99)),
+		"thrust_cost": float(rules.thrust_cost.per_tail) * tail_size * float(rules.get("tail_cost", {}).get(tail, 1.0)),
 		"energy_capacity": rules.energy_capacity.base + rules.energy_capacity.per_girth * girth,
 		"max_health": rules.max_health.base + rules.max_health.per_girth * girth,
 		"bite": float(rules.bite.get(String(body.mouth), 0.0)),
@@ -155,7 +197,7 @@ static func edit_cost(before: Dictionary, after: Dictionary, editor_rules: Dicti
 	var cost := 0
 	var step: Dictionary = editor_rules.step_cost
 	for key in step:
-		cost += absi(int(after[key]) - int(before[key])) * int(step[key])
+		cost += absi(int(after.get(key, 0)) - int(before.get(key, 0))) * int(step[key])
 	var swap: Dictionary = editor_rules.swap_cost
 	if String(after.tail) != String(before.tail):
 		cost += int(swap.tail)
@@ -166,8 +208,12 @@ static func edit_cost(before: Dictionary, after: Dictionary, editor_rules: Dicti
 
 ## The creature stage's body description of a fish (drawn by SpineRig with its parts): a spine of seven vertebrae
 ## along -Z, longer with length and fatter with girth, and its parts: the tail at the spine's end, a pair of
-## pectoral fins, the dorsal fin, eyes, the sense part and the mouth. Only part types already recorded are used.
-static func to_description(body: Dictionary, scale_m := 1.0) -> RefCounted:
+## pectoral fins, the dorsal fin (with a spine plate in front of it once the dorsal is big enough to sting a biter,
+## `min_dorsal`, the rules' spines.min_dorsal), eyes, the sense part and the mouth. Only part types already recorded
+## are used; each tail is told apart by its part and handles (TAIL_ART). Handles are per mille in the part's handle
+## order (tail_fluke [H1_Span, H2_Beat], fin [H1_Height, H2_Sweep, H3_Ripple], dorsal_spine [H1_Height, H2_Rake]);
+## tests/test_aquatic_sim.gd pins that order.
+static func to_description(body: Dictionary, scale_m := 1.0, min_dorsal := 1) -> RefCounted:
 	var desc = BodyDescription.create()
 	var length := int(body.get("length", 2))
 	var girth := int(body.get("girth", 1))
@@ -179,28 +225,39 @@ static func to_description(body: Dictionary, scale_m := 1.0) -> RefCounted:
 		var t := float(i) / float(profile.size() - 1)
 		var z := int(round(-half + 2.0 * half * t))
 		desc.add_vertebra(Vector3i(0, 0, z), maxi(18, int(round(r0 * profile[i]))))
-	var tail_type := "tail_fluke" if String(body.get("tail", "fluke")) == "fluke" else "fin"
-	desc.add_part(tail_type, _anchor(1000, 0, 0 if tail_type == "tail_fluke" else 0, 550 + 180 * int(body.get("tail_size", 1)), false, 0, 0 if tail_type == "tail_fluke" else 90))
+	var tail_size := int(body.get("tail_size", 1))
+	var art: Array = TAIL_ART.get(String(body.get("tail", "fluke")), TAIL_ART.fluke)
+	for piece in art:
+		var p: Dictionary = piece
+		desc.add_part(String(p.part), _anchor(int(p.u), int(p.ring), int(p.get("elev", 0)), int(p.scale) + int(p.per_size) * tail_size,
+				false, 0, int(p.roll), p.handles))
 	var fins := int(body.get("fins", 1))
 	if fins > 0:
-		desc.add_part("fin", _anchor(300, 250, 0, 380 + 200 * fins, true, -30, 0))
+		desc.add_part("fin", _anchor(300, 250, 0, 380 + 200 * fins, true, -30, 0, PECTORAL_HANDLES[mini(fins, 3) - 1]))
 	var dorsal := int(body.get("dorsal", 0))
 	if dorsal > 0:
-		desc.add_part("fin", _anchor(420, 0, 0, 380 + 260 * dorsal, false, 0, 90))
+		desc.add_part("fin", _anchor(420, 0, 0, 380 + 260 * dorsal, false, 0, 0, [0, 500, 0]))
+	if dorsal >= min_dorsal and dorsal > 0:
+		desc.add_part("dorsal_spine", _anchor(300, 0, 0, 420 + 160 * dorsal, false, 0, 0, [0, 600]))
 	desc.add_part("eye_round", _anchor(110, 180, 0, 520 + 40 * girth, true, 0, 0))
 	match String(body.get("sense", "eyes")):
 		"barbels":
 			desc.add_part("barbels", _anchor(0, 500, 30, 700, false, 0, 0))
 		"lure":
 			desc.add_part("lure", _anchor(80, 0, 0, 900, false, 0, 0))
+	var limbs := int(body.get("limbs", 0))
+	if limbs > 0:
+		# Lobe fins: a fore and a hind pair low on the flanks, stouter with each step.
+		for u in [330, 640]:
+			desc.add_part("fin", _anchor(u, 330, 0, 300 + 170 * limbs, true, 20, 0))
 	var mouth := "maw" if String(body.get("mouth", "both")) == "filter" else "jaw"
 	desc.add_part(mouth, _anchor(0, 500, 0, 650 + 50 * girth, false, 0, 0))
 	return desc
 
 
-static func _anchor(u: int, ring: int, elev: int, scale: int, mirror: bool, turn: int, roll: int) -> Dictionary:
+static func _anchor(u: int, ring: int, elev: int, scale: int, mirror: bool, turn: int, roll: int, handles := []) -> Dictionary:
 	return {"host": "spine", "u": u, "ring": ring, "elev": elev, "height": 0, "turn": turn, "tilt": 0, "roll": roll,
-			"scale": scale, "handles": [], "mirror": mirror}
+			"scale": scale, "handles": handles.duplicate(), "mirror": mirror}
 
 
 static func _pick(table: Array, count: int) -> Variant:

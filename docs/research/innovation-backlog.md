@@ -216,11 +216,22 @@ two size tiers for one rig family with the phenotype service scaling speed, bite
 and creators advertise "vanilla compatible" as a feature (wish 11). Whatever shape IB-09 takes, a shared creature
 file should list the parts it needs and open with marked placeholders when one is missing. Smallest slice: a save
 fixture with an unknown part id that loads with a placeholder and a warning, not an error.
+First slice IMPLEMENTED (load path only): `game/domain/creature/part_manifest.gd` lists the part types a body needs
+and which are missing; a save with an unknown part type loads with the part kept as written and a warning in
+`PersistenceService.load_from`'s `warnings` (`tests/test_graceful_sharing.gd`). The placeholder flag is derived at
+load, not saved. Still PROPOSED: a marked placeholder mesh (the part is not drawn today), showing the warning to the
+player, and the export file itself.
 
 **IB-32 Authored terrain variety.** "25 New Planets" and the adventure packs exist because players found Spore's
 terrain samey (wish 12). GENESIS habitats can be composed from a small set of Blender-authored landforms placed per
 seed, inside the procedural-placement boundary §15 asks us to define. Smallest slice: the M2 habitat built from four
 landform pieces, two seeds compared side by side.
+
+Status: the layout rule is IMPLEMENTED and unused. `game/domain/creature/landform_layout.gd` composes, per world
+seed, a list of landform placements (every kind at least once, footprints that do not overlap, inside the field,
+clear of the nest) from the PROPOSED tuning in `game/data/creature/landform_rules.json`;
+`tests/test_landform_layout.gd` checks it. Still open (PROPOSED): the four Blender landforms, placing them in the
+creature world scene, and the §15 runtime placement boundary approval.
 
 **IB-33 Colour and material freedom.** Nine colour, paint and texture mods (wish 3) say players wanted exact colour
 control and more pattern options. Within the §15 saturation discipline, the editor can offer hex entry, three colour

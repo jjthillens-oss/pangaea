@@ -1,0 +1,27 @@
+{
+  "id": "mus_vaporware",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_vaporware.mp3",
+  "purpose": "A calm piano piece by The Cynic Project, looped: an editor track.",
+  "role": "editor",
+  "bus": "Music",
+  "loop": true,
+  "length_s": 164.99,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Calm Piano 1 (Vaporware)",
+      "author": "cynicmusic",
+      "url": "https://opengameart.org/content/calm-piano-1-vaporware",
+      "download": "https://opengameart.org/sites/default/files/003_Vaporware_2.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2019-05-11"
+    }
+  ]
+}

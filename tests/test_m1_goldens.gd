@@ -166,16 +166,16 @@ func test_skip_leaves_out_its_files_and_the_soak_jobs_split_every_file_once() ->
 	check(counted > 10, "the split was checked over the test files (%d)" % counted)
 
 
-## G20 (build plan B-13): the unit suite's limit in tools/check.sh is 1200 s and CI's test-and-export
-## job times out after 40 minutes, holding the S1 fast (+48 s) and slow (+150 s) budgets.
+## G20 (build plan B-13): the unit suite's limit in tools/check.sh is 2400 s and CI's test-and-export
+## job times out after 70 minutes (1200 s and 40 minutes until 2026-11-10: the suite outgrew them), holding the S1 fast (+48 s) and slow (+150 s) budgets.
 func test_the_suite_limit_and_the_ci_timeout_hold_the_s1_budgets() -> void:
 	var check_sh := FileAccess.get_file_as_string("res://tools/check.sh")
-	check(check_sh.contains("\nbounded 1200 \"$GODOT\" --headless --path . --script res://tests/run_tests.gd\n"),
-		"check.sh runs the unit suite under a 1200 s limit")
+	check(check_sh.contains("\nbounded 2400 \"$GODOT\" --headless --path . --script res://tests/run_tests.gd\n"),
+		"check.sh runs the unit suite under a 2400 s limit")
 	check(not check_sh.contains("bounded 900 "), "and no longer under 900 s")
 	var job := _ci_job(FileAccess.get_file_as_string("res://.github/workflows/ci.yml"), "test-and-export")
 	check(job.contains("run: tools/check.sh"), "test-and-export runs tools/check.sh")
-	check(job.contains("\n    timeout-minutes: 40\n"), "test-and-export times out after 40 minutes")
+	check(job.contains("\n    timeout-minutes: 70\n"), "test-and-export times out after 70 minutes")
 
 
 ## The text of CI job `name` (from its key to the next job), or "".

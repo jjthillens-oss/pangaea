@@ -57,7 +57,8 @@ func setup(p_sim: AquaticSim) -> void:
 	_pin(warn_label, 0.5, 0.0, -700.0, 150.0, 1400.0)
 	warn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt_label = _label(self, 28)
-	_pin(prompt_label, 0.5, 0.5, -600.0, 230.0, 1200.0)
+	_pin(prompt_label, 0.5, 0.5, -600.0, 270.0, 1200.0)
+	prompt_label.grow_vertical = Control.GROW_DIRECTION_BEGIN   # a second line (the nest's rest) grows up, clear of the toasts
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label = _label(self, 26)
 	_pin(toast_label, 0.5, 1.0, -700.0, -230.0, 1400.0)
@@ -188,13 +189,17 @@ func refresh(delta: float) -> void:
 	var warn_color := WARN_COLOR
 	match String(w.lancer):
 		"investigate":
-			warn = "Something is watching you: swim away or hide in an arch"
+			warn = "Something is watching you: swim away or hide in a shelter"
 		"pursue":
-			warn = "The lancer is chasing! Hide in an arch, or outswim it"
+			warn = "The lancer is chasing! Hide in a shelter, or outswim it"
 			warn_color = DANGER_COLOR
 	if float(w.drifter) > 0.0:
-		warn = "A huge shadow is passing: swim clear of its path"
-		warn_color = DANGER_COLOR if float(w.drifter) >= 1.0 else WARN_COLOR
+		if sim.sheltered(p.pos) != "":
+			warn = "A huge shadow passes over your hiding place"
+			warn_color = WARN_COLOR
+		else:
+			warn = "A huge shadow is passing: swim clear of its path or hide"
+			warn_color = DANGER_COLOR if float(w.drifter) >= 1.0 else WARN_COLOR
 	if pressure > 0.0 and warn == "":
 		warn = "The water presses on you: rise" if pressure < 1.0 else "The pressure is hurting you: rise now"
 		warn_color = DANGER_COLOR if pressure >= 1.0 else WARN_COLOR
@@ -204,6 +209,17 @@ func refresh(delta: float) -> void:
 	if p.pos.distance_to(sim.kin.pos) < float(sim.rules.world.mating.reach) + 2.0:
 		prompt = "E: mate with your kin and evolve" if sim.can_mate() else \
 				"Your kin waits. Eat until your energy is %d%% full to mate." % int(round(float(sim.rules.world.mating.energy_share) * 100.0))
+	var station := sim.station_here()
+	if prompt == "" and not station.is_empty() and float(p.health) < float(s.max_health):
+		match String(station.standing):
+			"friend":
+				prompt = "The %s tend you" % station.name if station.tending else "Rest here: the %s tend you" % station.name
+			"neutral":
+				prompt = "The %s tend their friends: call them (Q)" % station.name
+	var nest := sim.nest_here()
+	if not nest.is_empty() and bool(nest.heals) and float(p.health) < float(s.max_health):
+		var rest := "Resting at the nest: you heal" if bool(nest.resting) else "Rest at the nest to heal"
+		prompt = rest if prompt == "" else prompt + "\n" + rest
 	prompt_label.text = prompt
 	var lines := PackedStringArray()
 	for t in _toasts:
@@ -230,7 +246,8 @@ static func _bearing(to: Vector3, heading: float) -> String:
 	return "◀ left" if angle > 0.0 else "right ▶"
 
 
-## A player-facing line for a sim event, or "" for none.
+## A player-facing line for a sim event, or "" for none. Species are named from the event (the rules' name and one),
+## so a species added to the rules needs no wording here (aquatic-r2).
 static func event_text(e: Dictionary) -> String:
 	match String(e.type):
 		"found":
@@ -238,18 +255,18 @@ static func event_text(e: Dictionary) -> String:
 		"points":
 			return "+%d point for your meals" % int(e.amount)
 		"relation":
-			return "The reef grazers are your friends now (+%d points)" % int(e.get("points", 0)) if e.standing == "friend" \
-					else "The reef grazers will remember that bite"
+			return "The %s are your friends now (+%d points)" % [e.get("name", "fish"), int(e.get("points", 0))] \
+					if e.standing == "friend" else "The %s will remember that bite" % e.get("name", "fish")
 		"signal_answered":
 			if e.has("rapport"):
-				return "The grazers answer your call (%d of %d)" % [int(e.rapport), int(e.needed)]
-			return "The grazers answer" if e.get("standing") == "friend" else "The grazers keep away from you"
+				return "The %s answer your call (%d of %d)" % [e.get("name", "fish"), int(e.rapport), int(e.needed)]
+			return ("The %s answer" if e.get("standing") == "friend" else "The %s keep away from you") % e.get("name", "fish")
 		"signal_too_fast":
-			return "Wait for their answer before you call again"
+			return "Wait for the %s to answer before you call again" % e.get("name", "fish")
 		"signal_unheard":
 			return "Nobody near enough to hear your call"
 		"ally_warning":
-			return "Your grazer friends flash a warning!"
+			return "Your friends the %s flash a warning!" % e.get("name", "fish")
 		"lancer_gave_up":
 			return "The lancer gives up" if e.why != "died" else ""
 		"struck":
@@ -259,11 +276,16 @@ static func event_text(e: Dictionary) -> String:
 		"bite_weak":
 			return "Your filter mouth cannot bite"
 		"killed":
-			return "You caught a fish" if e.species == "shoal" else ""
+			return "You caught %s" % e.get("one", "a fish")
+		"cleaned":
+			return "The %s clean your wounds" % e.get("name", "fish")
+		"lured":
+			return "Your lure draws the %s in" % e.get("name", "fish")
 		"died":
 			return "You died (%s). Back at the nest." % e.cause
 		"shore":
-			return "The shore. To go ashore your line needs limbs that can crawl; that comes in a later step."
+			return "" if bool(e.get("can_crawl", false)) else \
+					"The shore. To crawl ashore your line needs strong lobe fins: evolve them at the nest."
 		"mate_not_ready":
 			return "Too hungry to mate: eat first"
 		"generation":

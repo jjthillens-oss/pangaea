@@ -3,15 +3,22 @@
   "status": "PROPOSED",
   "note": "Aquatic stage tuning (docs/stages/aquatic-plan.md). Every number is PROPOSED: change it here, not in code. Distances in metres, times in seconds (the sim converts them to whole ticks once at load), speeds in m/s.",
   "body": {
-    "ranges": {"length": [1, 3], "girth": [1, 3], "tail_size": [1, 3], "fins": [0, 3], "dorsal": [0, 2], "bladder": [0, 3]},
-    "tails": ["fluke", "ribbon"],
+    "ranges": {"length": [1, 3], "girth": [1, 3], "tail_size": [1, 3], "fins": [0, 3], "dorsal": [0, 2], "bladder": [0, 3], "limbs": [0, 2]},
+    "crawl_limbs": 2,
+    "tails": ["fluke", "ribbon", "lunate", "paddle", "whip"],
+    "tails_note": "Each tail is a tradeoff, not an upgrade (Bible §2, §12): fluke the all-rounder; ribbon strong at small sizes and nimble but costly; lunate the cruiser (fast and cheap, slow to start, wide turns); paddle the sprinter (best dash and tight turns, draggy and costly); whip the thrifty one (cheapest and tightest turns, slow). tests/test_aquatic_sim.gd checks that no tail beats another on every count.",
     "senses": ["eyes", "barbels", "lure"],
     "mouths": ["filter", "jaw", "both"],
-    "mass": {"base": 1.0, "per_length": 0.25, "per_girth": 0.35, "per_tail": 0.06, "per_fin": 0.05},
-    "thrust": {"fluke": {"base": 2.5, "per_size": 3.2}, "ribbon": {"base": 7.0, "per_size": 2.2}},
-    "drag": {"base": 0.8, "per_fin": 0.06, "per_dorsal": 0.08, "per_girth": 0.08, "per_length": -0.07},
+    "mass": {"base": 1.0, "per_length": 0.25, "per_girth": 0.35, "per_tail": 0.06, "per_fin": 0.05, "per_limb": 0.12},
+    "thrust": {"fluke": {"base": 2.5, "per_size": 3.2}, "ribbon": {"base": 6.4, "per_size": 1.3}, "lunate": {"base": 2.4, "per_size": 3.2},
+      "paddle": {"base": 5.0, "per_size": 2.6}, "whip": {"base": 3.8, "per_size": 1.4}},
+    "drag": {"base": 0.8, "per_fin": 0.06, "per_dorsal": 0.08, "per_girth": 0.08, "per_length": -0.07, "per_limb": 0.07},
     "turn": {"base": 1.6, "per_fin": 0.55, "per_dorsal": 0.15, "per_length": -0.2},
-    "turn_speed_penalty": {"fluke_per_size": 0.03, "ribbon_per_size": 0.025, "per_length": 0.025},
+    "turn_speed_penalty": {"fluke_per_size": 0.03, "ribbon_per_size": 0.018, "lunate_per_size": 0.06, "paddle_per_size": 0.014,
+      "whip_per_size": 0.008, "per_length": 0.025},
+    "tail_drag": {"fluke": 0.0, "ribbon": 0.0, "lunate": -0.16, "paddle": 0.14, "whip": -0.02},
+    "tail_burst": {"fluke": 1.0, "ribbon": 0.9, "lunate": 0.7, "paddle": 1.5, "whip": 0.75},
+    "tail_cost": {"fluke": 1.0, "ribbon": 1.25, "lunate": 0.8, "paddle": 1.35, "whip": 0.55},
     "burst": {"thrust_share": 1.8, "energy_share": 3.0},
     "trim": {"base": 1.2, "per_fin": 0.7, "per_bladder": 0.25},
     "idle_drift": [-0.6, -0.25, 0.0, 0.18],
@@ -26,7 +33,7 @@
     "spines": {"min_dorsal": 1, "bite_back": 6.0}
   },
   "editor": {
-    "step_cost": {"length": 3, "girth": 3, "tail_size": 2, "fins": 2, "dorsal": 1, "bladder": 2},
+    "step_cost": {"length": 3, "girth": 3, "tail_size": 2, "fins": 2, "dorsal": 1, "bladder": 2, "limbs": 3},
     "swap_cost": {"tail": 2, "sense": 2},
     "start_points": 6
   },
@@ -51,25 +58,33 @@
       {"id": "twilight", "name": "Twilight drop", "depth": 30.0},
       {"id": "deep", "name": "Deep", "depth": 60.0}
     ],
-    "nest": {"pos": [0.0, -7.5, 8.0], "radius": 5.0},
+    "nest": {"pos": [0.0, -7.5, 8.0], "radius": 5.0, "rest_heal_per_s": 3.0, "rest_speed": 0.6},
     "shore": {"pos": [0.0, -1.0, 30.0], "radius": 6.0},
+    "sites_note": "Shelters and feeding sites, each with the zone it sits in (tests/test_aquatic_sim.gd checks it, and that every site is in the water inside the walls, no deeper than the deepest legal rated depth). New ones are appended so the earlier ids and food_NNN numbers stay. aquatic-r2 added the pillar ring (a ring of glass drums in the twilight, inside the lancer's territory), the vent chimney (the drifter's sweep passes over it; a fish inside is not swept), the nest-side algae bed, the krill swarm in the lancer's patrol and the fallen giant (a carcass for jaws, within the drifter's warning but not its sweep). A food kind that floats drifts in open water; the others lie on the floor. A diet of plant is what a filter mouth takes (the krill too), meat what a jaw takes.",
     "shelters": [
-      {"id": "shelter_reef_west", "name": "West reef arch", "pos": [-16.0, -18.0, -50.0], "radius": 5.0},
-      {"id": "shelter_reef_east", "name": "East reef arch", "pos": [18.0, -24.0, -88.0], "radius": 5.0},
-      {"id": "shelter_ledge", "name": "Ledge cave", "pos": [-8.0, -34.0, -122.0], "radius": 4.5}
+      {"id": "shelter_reef_west", "name": "West reef arch", "zone": "reef", "pos": [-16.0, -18.0, -50.0], "radius": 5.0},
+      {"id": "shelter_reef_east", "name": "East reef arch", "zone": "reef", "pos": [18.0, -24.0, -88.0], "radius": 5.0},
+      {"id": "shelter_ledge", "name": "Ledge cave", "zone": "twilight", "pos": [-8.0, -34.0, -122.0], "radius": 4.5},
+      {"id": "shelter_pillars", "name": "Pillar ring", "zone": "twilight", "pos": [22.0, -50.0, -168.0], "radius": 5.0},
+      {"id": "shelter_vent_chimney", "name": "Vent chimney", "zone": "deep", "pos": [28.0, -82.0, -262.0], "radius": 5.0}
     ],
     "feeding": [
-      {"id": "plankton_bay", "kind": "plankton", "name": "Plankton bay", "pos": [10.0, -5.0, 0.0], "spread": 8.0, "items": 10},
-      {"id": "plankton_shelf", "kind": "plankton", "name": "Shelf drift", "pos": [-12.0, -8.0, -18.0], "spread": 8.0, "items": 8},
-      {"id": "algae_west", "kind": "algae", "name": "West algae bed", "pos": [-20.0, -17.0, -58.0], "spread": 7.0, "items": 8},
-      {"id": "algae_east", "kind": "algae", "name": "East algae bed", "pos": [22.0, -23.0, -96.0], "spread": 7.0, "items": 8},
-      {"id": "vents", "kind": "vent", "name": "Warm vents", "pos": [6.0, -78.0, -270.0], "spread": 9.0, "items": 8}
+      {"id": "plankton_bay", "kind": "plankton", "name": "Plankton bay", "zone": "shallows", "pos": [10.0, -5.0, 0.0], "spread": 8.0, "items": 10},
+      {"id": "plankton_shelf", "kind": "plankton", "name": "Shelf drift", "zone": "shallows", "pos": [-12.0, -8.0, -18.0], "spread": 8.0, "items": 8},
+      {"id": "algae_west", "kind": "algae", "name": "West algae bed", "zone": "reef", "pos": [-20.0, -17.0, -58.0], "spread": 7.0, "items": 8},
+      {"id": "algae_east", "kind": "algae", "name": "East algae bed", "zone": "reef", "pos": [22.0, -23.0, -96.0], "spread": 7.0, "items": 8},
+      {"id": "vents", "kind": "vent", "name": "Warm vents", "zone": "deep", "pos": [6.0, -78.0, -270.0], "spread": 9.0, "items": 8},
+      {"id": "algae_nest", "kind": "algae", "name": "Nest-side algae bed", "zone": "shallows", "pos": [-16.0, -6.0, 14.0], "spread": 6.0, "items": 6},
+      {"id": "krill_swarm", "kind": "krill", "name": "Krill swarm", "zone": "twilight", "pos": [-6.0, -36.0, -152.0], "spread": 6.0, "items": 8},
+      {"id": "fallen_giant", "kind": "carcass", "name": "Fallen giant", "zone": "deep", "pos": [-22.0, -72.0, -228.0], "spread": 4.0, "items": 4}
     ],
     "food": {
-      "plankton": {"energy": 7.0, "diet": "plant", "regrow": 20.0},
+      "plankton": {"energy": 7.0, "diet": "plant", "regrow": 20.0, "floats": true},
       "algae": {"energy": 10.0, "diet": "plant", "regrow": 30.0},
       "vent": {"energy": 22.0, "diet": "plant", "regrow": 40.0},
-      "fish": {"energy": 26.0, "diet": "meat", "regrow": 45.0}
+      "fish": {"energy": 26.0, "diet": "meat", "regrow": 45.0},
+      "krill": {"energy": 12.0, "diet": "plant", "regrow": 35.0, "floats": true},
+      "carcass": {"energy": 30.0, "diet": "meat", "regrow": 90.0}
     },
     "eat_reach": 1.4,
     "points": {"meals_per_point": 4, "zone_found": 2, "friend": 3},
@@ -84,11 +99,23 @@
     "drifter": {"centre": [0.0, 0.0, -300.0], "radii": [38.0, 52.0], "height_over_floor": 14.0, "period": 90.0, "warn_reach": 26.0, "warn": 3.0,
                 "sweep_reach": 11.0, "sweep_damage": 45.0, "cooldown": 6.0, "length_m": 18.0}
   },
+  "species_order": ["grazer", "shoal", "minnow", "cleaner", "glowfin"],
+  "species_note": "The animals (aquatic-r2: data, not code). species_order is the order they are built and ticked in (their ids, animals and seeded draws follow it, so a species added at the end leaves the earlier ones as they were). Per species: name (the group, for the HUD), one (a single animal), count, zone (its niche), home (a shelter id, 3 m above it, or a position), wander, speed, flee_speed, flee_reach, health; flees: always (prey that flees any fish near) or foe (only once it is a foe); hide_from_lancer: the reach (m) at which it hides at home from a hunting lancer; signals_to_friend, signal_reach and signal_gap (s): it is befriended by that many spaced calls, and a bite makes it a foe; follow_leash: as a friend it follows the fish in its own zone while the fish is this near its home; warn_reach: a friend this near flashes a warning when the lancer investigates; meal and respawn (s): the energy a kill gives and its return time (default the fish food's energy and regrow); station {reach, rest_speed, heal_per_s}: as a friend, a fish resting (slower than rest_speed) this near the species' home is tended and healed while one of its animals lives (a \"cleaned\" event once a visit), and the animals swim to it; lured {reach, leash, speed}: a fish whose sense is the lure draws the species' animals to its head from this near while it stays within leash of their home (they stop fleeing it). aquatic-r2 added minnow (the jaw lineage's first food, in the shallows), cleaner (befriended on the reef, a cleaning station) and glowfin (deep prey only a lure brings near).",
   "species": {
-    "grazer": {"name": "reef grazers", "count": 6, "zone": "reef", "home": "shelter_reef_west", "wander": 14.0, "speed": 2.2,
-               "flee_speed": 4.0, "flee_reach": 10.0, "signals_to_friend": 3, "signal_reach": 8.0, "signal_gap": 0.8,
-               "follow_leash": 70.0, "warn_reach": 22.0, "health": 30.0},
-    "shoal": {"name": "silver shoal", "count": 10, "zone": "twilight", "home": [10.0, -34.0, -128.0], "wander": 10.0, "speed": 2.6,
-              "flee_speed": 5.2, "flee_reach": 6.0, "health": 15.0}
+    "grazer": {"name": "reef grazers", "one": "a reef grazer", "count": 6, "zone": "reef", "home": "shelter_reef_west", "wander": 14.0,
+               "speed": 2.2, "flee_speed": 4.0, "flee_reach": 10.0, "flees": "foe", "hide_from_lancer": 18.0, "signals_to_friend": 3,
+               "signal_reach": 8.0, "signal_gap": 0.8, "follow_leash": 70.0, "warn_reach": 22.0, "health": 30.0},
+    "shoal": {"name": "silver shoal", "one": "a silver shoal fish", "count": 10, "zone": "twilight", "home": [10.0, -34.0, -128.0],
+              "wander": 10.0, "speed": 2.6, "flee_speed": 5.2, "flee_reach": 6.0, "flees": "always", "health": 15.0},
+    "minnow": {"name": "glass minnows", "one": "a glass minnow", "count": 8, "zone": "shallows", "home": [12.0, -5.0, -8.0],
+               "wander": 6.0, "speed": 2.0, "flee_speed": 4.6, "flee_reach": 5.0, "flees": "always", "health": 8.0, "meal": 9.0,
+               "respawn": 30.0},
+    "cleaner": {"name": "reef cleaners", "one": "a reef cleaner", "count": 4, "zone": "reef", "home": "shelter_reef_east",
+                "wander": 4.0, "speed": 1.6, "flee_speed": 3.6, "flee_reach": 8.0, "flees": "foe", "hide_from_lancer": 18.0,
+                "signals_to_friend": 2, "signal_reach": 8.0, "signal_gap": 0.8, "health": 20.0,
+                "station": {"reach": 5.0, "rest_speed": 0.6, "heal_per_s": 4.0}},
+    "glowfin": {"name": "vent glowfins", "one": "a vent glowfin", "count": 6, "zone": "deep", "home": [6.0, -82.0, -266.0],
+                "wander": 8.0, "speed": 1.4, "flee_speed": 3.4, "flee_reach": 8.0, "flees": "always", "health": 12.0, "meal": 18.0,
+                "respawn": 40.0, "lured": {"reach": 12.0, "leash": 20.0, "speed": 2.0}}
   }
 }

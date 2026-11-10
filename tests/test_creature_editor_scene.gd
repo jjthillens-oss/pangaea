@@ -37,6 +37,65 @@ static func back_point(desc: RefCounted, up := 0.7) -> Vector3:
 	return (desc.position_m(4) + desc.position_m(5)) * 0.5 + Vector3(0.0, up * desc.radius_m(4), 0.0)
 
 
+## IB-31 (PROPOSED): the scene opens a body with a part of a type this build does not have (the fixture's p_3), shows
+## the notice and the "Missing parts" line, names the placeholder when selected, refuses to turn or resize it, lets
+## it be deleted (and the delete undone), walks the body and commits with the placeholder still on it.
+func test_a_body_with_a_part_this_build_lacks_opens_and_edits_in_the_scene() -> void:
+	const UNKNOWN := "mod_crystal_horn"
+	var Session = load("res://game/domain/creature/creature_editor_session.gd")
+	var body: Dictionary = JSON.parse_string(
+			FileAccess.get_file_as_string("res://tests/fixtures/save_v3_creature_unknown_part.json"))["creature"]["body"]
+	editor = EDITOR_SCENE.instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(editor)
+	editor.setup(BodyCodec.from_dict(body), 500)
+	var start := text()
+	for i in 200:   # the skin comes from the worker; the rig (and its mounted parts) appears when it lands
+		if editor.rig != null:
+			break
+		OS.delay_msec(10)
+		editor._collect_skin()
+	check(editor.rig != null, "the body was built, the placeholder left out of the rig")
+	check(editor.missing_notice().contains("1 part this version does not have (%s)" % UNKNOWN), "the notice names the type: %s" % editor.missing_notice())
+	check_eq(editor.refusal_text, editor.missing_notice(), "the notice is on the refusal line")
+	check(editor.hud.refusal_panel.visible and editor.hud.refusal_text.text == editor.missing_notice(), "and the HUD shows it")
+	editor._process(CreatureEditor.REFUSAL_S + 1.0)
+	check(editor.refusal_text != "", "it outlasts an ordinary refusal")
+	check(editor.hud.stats_text.text.contains("Missing parts  1 (kept in the save)"), "the stats report it: %s" % editor.hud.stats_text.text)
+	check(editor.select("part", "p_3"), "the placeholder has a handle and can be selected")
+	editor._process(0.0)
+	check(editor.hud.stats_text.text.contains("Selected  Missing part: %s (p_3)" % UNKNOWN), "the selection names it: %s" % editor.hud.stats_text.text)
+	for key in [KEY_Q, KEY_E, KEY_R, KEY_F]:
+		var turned: Dictionary = editor.turn_selected(key)
+		check(not turned["ok"] and turned["reason"] == Session.MISSING_PART_TEXT, "a turn is refused: %s" % turned.get("reason", ""))
+	check_eq(editor.refusal_text, String(Session.MISSING_PART_TEXT), "with the reason shown")
+	for delta in [1, -1]:
+		var sized: Dictionary = editor.resize_selected(delta)
+		check(not sized["ok"] and sized["reason"] == Session.MISSING_PART_TEXT, "a resize is refused: %s" % sized.get("reason", ""))
+	var at: Vector2 = editor.handle_screen("part", "p_3")
+	if at.x >= 0.0:
+		editor.drag(at, at + Vector2(30.0, -20.0))
+	editor._process(0.0)
+	check_eq(text(), start, "nothing changed")
+	var r: Dictionary = editor.test_drive(true)
+	check(r["ok"], "the body walks with the placeholder on it: %s" % r["reason"])
+	editor._process(1.0 / 60.0)
+	editor.test_drive(false)
+	check(editor.select("part", "p_3"), "selected again")
+	r = editor.remove_selected()
+	check(r["ok"] and editor.working_body().parts.filter(func(p): return p["id"] == "p_3").is_empty(), "deleted: %s" % r["reason"])
+	editor._process(0.0)
+	check(editor.missing_notice() == "" and not editor.hud.stats_text.text.contains("Missing parts"), "nothing missing after the delete")
+	check(editor.undo() and text() == start, "undo restores it")
+	editor._process(0.0)
+	check(editor.hud.stats_text.text.contains("Missing parts  1"), "and the stats say so again")
+	var got := {}
+	editor.done_requested.connect(func(b: Dictionary, _p: int): got.merge(b))
+	r = editor.finish()
+	check(r["ok"], "Done commits with the placeholder kept: %s" % r["reason"])
+	check((got.get("parts", []) as Array).any(func(p): return p["type"] == UNKNOWN), "the committed body still carries it")
+	editor._process(0.0)
+
+
 func test_setup_shows_the_starter_body_with_its_handles_and_palette() -> void:
 	open()
 	var desc = editor.working_body()
@@ -150,6 +209,28 @@ func test_the_skin_colour_rides_in_the_body() -> void:
 	editor.set_skin_color(Color("#4fc08a"))
 	check_eq(String(editor.working_body().extra.get("skin_color", "")), "4fc08a", "the working body carries the swatch")
 	check(editor.undo() == false, "a colour is not an undo step")
+
+
+func test_a_typed_hex_sets_the_skin_colour_inside_the_limits() -> void:
+	open()
+	var r: Dictionary = editor.set_skin_hex(" #a86fd6 ")
+	check(r["ok"] and not r["clamped"], "a swatch-like colour is taken as typed")
+	check_eq(String(editor.working_body().extra.get("skin_color", "")), "a86fd6", "the working body carries it, as a swatch's")
+	check_eq(editor.hud.hex_field.text, "#A86FD6", "the field shows it tidied")
+	check(not editor.hud.hex_hint.visible, "no hint")
+	r = editor.set_skin_hex("zzz")
+	check(not r["ok"] and editor.hud.hex_hint.visible and editor.hud.hex_hint.text == r["error"], "bad text shows why")
+	check_eq(String(editor.working_body().extra.get("skin_color", "")), "a86fd6", "and changes nothing")
+	editor.hud.hex_field.text = "#ff0000"
+	editor.hud.hex_field.text_submitted.emit("#ff0000")
+	var stored := String(editor.working_body().extra.get("skin_color", ""))
+	check(stored != "ff0000" and stored != "a86fd6" and stored == editor.skin_color.to_html(false), "pure red is toned down (%s)" % stored)
+	check(editor.skin_color.s <= 0.86 and editor.skin_color.v <= 0.96, "inside the saturation discipline")
+	check(editor.hud.hex_hint.visible and editor.hud.hex_field.text == "#" + stored.to_upper(), "the field and a note say so")
+	check(editor.undo() == false, "like a swatch, a typed colour is not an undo step")
+	(editor.hud.swatch_row.get_child(1) as Button).pressed.emit()
+	check_eq(editor.hud.hex_field.text, "#4FC08A", "picking a swatch updates the field")
+	check(not editor.hud.hex_hint.visible, "and clears the note")
 
 
 func test_the_skin_covering_rides_in_the_body_and_reaches_the_shader() -> void:

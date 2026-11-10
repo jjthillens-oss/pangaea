@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature hand part (PROPOSED): a frog's hand, a flat palm and four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
+  "purpose": "Creature hand part (PROPOSED): a frog's hand, a wrist flowing into a flat palm that fans out toward four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_hand_frog.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_hand_frog.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 2,
+  "revision": 3,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.09,
     "y_forward": 0.027,
     "z_up": 0.134
   },
-  "triangles": 732,
+  "triangles": 1780,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -94,11 +94,20 @@
     "M_HandFrogSkin": 0.9,
     "M_HandFrogPad": 0.2
   },
+  "review_notes": {
+    "revision": 3,
+    "cause": "Real frames of revision 2 (Blender gray and material views at rest, H1_Grip 1000 and H2_Spread 1000; Godot captures; the hopper preset) showed: a straight wrist cone stuck under an ellipsoid palm, meeting it in a crease; the sticky discs, icospheres decimated at 0.8 mm, with octagonal outlines; at H1_Grip 1000 the finger tubes' open ends showing as dark holes where the discs curl away from them; and at H2_Spread 1000 the palm's wide top corners swinging out with the outer fingers as small spikes. The web, two open sheets 2.4 mm apart, was also open along its free edge. Fingers did not pass through the palm and the discs stayed on the tips.",
+    "change": "The wrist and palm are one closed loft (FROG_PALM_RINGS): a wrist that flares a little into the skin, narrows to 10 mm above it and fans out into a flat palm widest under the finger roots, rounding over at the knuckles. The discs are flattened superellipsoids round their thin axis (24 segments, flat faces, a rounded rim), authored at final density and not decimated, so their outline is round. Each finger tip rounds off to a point inside its disc. The web is a closed slab (rim faces all round). H2_Spread fans only what stands above the palm's sides (z over 44 to 50 mm), so the palm's corners stay put; H1_Grip is unchanged. The footprint stays at revision 2's 0.027 m (the new wrist measures less near the skin; kept so the rules do not change). 1780 of 2500 triangles (was 732; the discs are 1152 of them); dimensions (0.09 x 0.027 x 0.134 m), sink, pivot, handle keys, sockets (none) and materials unchanged.",
+    "gate1_shape": "pass: Blender gray front, side and three-quarter: the wrist flows into a fan-shaped palm with no crease, the discs are round, the fingers taper with their knuckle swellings (before: a cone under a round paddle, octagonal discs). H1_Grip 500 and 1000: the fingers curl into a fist with closed, rounded tips and the discs riding on them, nothing through the palm (before: dark open tube ends). H2_Spread 1000: the fingers fan wide and the palm's outline stays smooth (before: corner spikes). Remaining: the decimated fingers still show flat facets close up.",
+    "gate2_materials": "pass (unchanged): wet green skin and pale glossy discs read apart in the Blender material views and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the Godot captures at rest, H1_Grip 1000 and H2_Spread 1000 match the Blender views. On the hopper preset (tools/godot/part_on_body_shot.gd, bare scene, side view) the hand hangs from the forelimb, seen edge-on, with the wrist flowing into the palm (before: a collar where the wrist met the palm). In the editor scene the hopper's hands, like its feet, sit under the floor pad, and at the world's gameplay distance they are small green ends of the forelimbs: placement, not the part."
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 1514,
-    "triangles_after": 732
+    "triangles_before": 3520,
+    "triangles_after": 1780
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

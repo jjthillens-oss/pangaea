@@ -23,7 +23,7 @@ EXPORT = os.path.join(ld.ROOT, "assets", "export")
 # Rows by role; anything unlisted lands in a last row.
 ROWS = [
     ["cpart_beak", "cpart_mandibles", "cpart_maw", "cpart_proboscis", "cpart_jaw", "cpart_bill", "cpart_barbels",
-     "cpart_muzzle_fang", "cpart_muzzle_grazer", "cpart_beak_hooked", "cpart_mouth_grin", "cpart_mouth_tendrils"],
+     "cpart_muzzle_fang", "cpart_muzzle_grazer", "cpart_mouth_grin", "cpart_mouth_tendrils"],
     ["cpart_eye", "cpart_eye_slit", "cpart_eye_round", "cpart_eye_cluster", "cpart_eye_stalk", "cpart_compound_eye", "cpart_antenna", "cpart_lure", "cpart_gill_fan", "cpart_eye_bulge", "cpart_eye_goat", "cpart_eye_beady", "cpart_eye_brow"],
     ["cpart_foot", "cpart_foot_webbed", "cpart_foot_paw", "cpart_foot_talon", "cpart_foot_frog", "cpart_foot_primate", "cpart_hoof", "cpart_flipper"],
     ["cpart_hand", "cpart_hand_paw", "cpart_hand_pincer", "cpart_hand_tentacle", "cpart_hand_primate", "cpart_hand_frog"],

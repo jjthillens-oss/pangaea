@@ -28,6 +28,7 @@ import blockout_common as bc  # noqa: E402  (imports bpy first)
 import make_m1_production as mp  # noqa: E402
 import surfacing as sf  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
+from mathutils.bvhtree import BVHTree  # noqa: E402
 
 GENERATOR = "tools/blender/make_creature_parts.py"
 REVIEW_STATE = mp.REVIEW_STATE
@@ -95,13 +96,15 @@ def _shape_keys(obj, handles):
     return out
 
 
-def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=()):
+def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=(), accept=None):
     """`keep` names objects authored at their final density, which decimation would spoil (an iris edge that is
-    a material boundary): they get a tolerance so small nothing collapses."""
+    a material boundary): they get a tolerance so small nothing collapses. `accept` maps an object name to a test
+    its reduced mesh must also pass (surfacing.reduce's `accept`), for a region that needs a tighter fit than the
+    rest (the round ear's rolled rim)."""
     before = after = 0
     highs = {}
     for obj in objs:
-        b, a, high = sf.reduce(obj, 1e-7 if obj.name in keep else tolerance)
+        b, a, high = sf.reduce(obj, 1e-7 if obj.name in keep else tolerance, accept=(accept or {}).get(obj.name))
         before, after = before + b, after + a
         if a == b:
             sf.drop_highs([high])
@@ -114,6 +117,21 @@ def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=()):
     return {"textures": textures,
             "reduction": {"method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
                           "tolerance_m": tolerance, "triangles_before": before, "triangles_after": after}}
+
+
+def _points_fit(points, tol):
+    """A decimation test (surfacing.reduce's `accept`): every one of `points` (the high mesh's, in the object's
+    space) lies within `tol` of the reduced surface."""
+    pts = [Vector(p) for p in points]
+
+    def fits(mesh):
+        tree = BVHTree.FromPolygons([v.co.copy() for v in mesh.vertices], [tuple(p.vertices) for p in mesh.polygons])
+        for p in pts:
+            hit = tree.find_nearest(p)
+            if hit[0] is None or hit[3] > tol:
+                return False
+        return True
+    return fits
 
 
 def _grey(sh, fac, lo):
@@ -135,7 +153,7 @@ ROLE = {
     "wing_dragon": "detail", "dorsal_spine": "detail",
     "gill_fan": "detail", "lure": "detail", "barbels": "detail",
     "ear_pointed": "detail", "tail_bushy": "detail", "mane": "detail",
-    "muzzle_fang": "mouth", "muzzle_grazer": "mouth", "beak_hooked": "mouth", "mouth_grin": "mouth", "mouth_tendrils": "mouth",
+    "muzzle_fang": "mouth", "muzzle_grazer": "mouth", "mouth_grin": "mouth", "mouth_tendrils": "mouth",
     "eye_goat": "eye", "eye_beady": "eye", "eye_brow": "eye",
     "antler": "weapon", "tail_stinger": "weapon",
     "back_plate": "detail", "feather_fan": "detail", "ear_long": "detail",
@@ -2124,15 +2142,17 @@ def build_barbels():
 
 # --- Set 7: more eyes and mouths ------------------------------------------------------------------------
 
-def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28):
+def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28, iris_rows=4, back_rows=6):
     """An eyeball revolved round +Z with a ring of its own exactly at the iris edge, so the iris is a second
     material on the same mesh with a true circular edge (a separate iris shell made the bake ray-cast hit the
-    ball underneath). Faces inside `iris_half` (radians from +Z) take `iris`, the rest `sclera`."""
-    thetas = sorted(set([iris_half * k / 4 for k in range(5)] + [iris_half + (math.pi - iris_half) * k / 6 for k in range(7)]))
+    ball underneath). Faces inside `iris_half` (radians from +Z) take `iris`, the rest `sclera`. `iris_rows` and
+    `back_rows` are the bands on either side of the iris edge."""
+    thetas = sorted(set([iris_half * k / iris_rows for k in range(iris_rows + 1)]
+                        + [iris_half + (math.pi - iris_half) * k / back_rows for k in range(back_rows + 1)]))
     prof = [(radius * math.cos(t), radius * math.sin(t) if 0.0 < t < math.pi - 1e-9 else 0.0) for t in thetas]
     rv, rf, bands = bc.revolve(prof, segs)
     verts = [tuple(centre + Vector(v)) for v in _up(rv)]
-    face_mats = [1 if b < 4 else 0 for b in bands]
+    face_mats = [1 if b < iris_rows else 0 for b in bands]
     obj = bc.mesh_object(name, verts, rf, [sclera, iris], face_mats)
     return obj
 
@@ -3200,12 +3220,13 @@ def build_spike():
             "paint_mix": {"M_SpikePlate": 0.7, "M_Spike": 0.05}, "revision": 1, **baked}
 
 
-def _wet_skin_material(name, scale=90.0, rough=0.28, mottle=True):
+def _wet_skin_material(name, scale=90.0, rough=0.28, mottle=True, flat="#CCCCCC"):
     """Smooth amphibian skin: broad soft mottling and a faint fine pebble, low roughness so it reads wet.
-    `mottle=False` gives the plain version for a surface whose UVs stretch (a closing lid): an even tone, no bump."""
+    `mottle=False` gives the plain version for a surface whose UVs stretch (a closing lid): an even tone (`flat`),
+    no bump."""
     sh = sf.Shader(name)
     if not mottle:
-        return sh.out("#CCCCCC", rough)
+        return sh.out(flat, rough)
     mottle = sh.remap(sh.noise(scale, 2.0), 0.35, 0.65)
     pebble = sh.remap(sh.voronoi(scale * 6.0, 0.9), 0.3, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.12, 0.0004)
@@ -3221,8 +3242,9 @@ def _leather_material(name):
     return sh.out(_grey(sh, sh.math("ADD", 0.72, sh.math("MULTIPLY", creases, 0.28)), 0.75), 0.62)
 
 
-def _fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
-    """Short dense fur: fine strands stretched along one axis, broken into clumps, rough and matte."""
+def _primate_fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
+    """Short dense fur (the primate hand and foot): fine strands stretched along one axis, broken into clumps,
+    rough and matte."""
     sh = sf.Shader(name)
     strands = sh.noise(scale, 2.5, vector=mp._stretched(sh, along))
     clumps = sh.remap(sh.noise(scale * 0.12, 2.0), 0.3, 0.7)
@@ -3230,8 +3252,8 @@ def _fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
     return sh.out(_grey(sh, sh.math("ADD", 0.5, sh.math("MULTIPLY", sh.math("MULTIPLY", strands, clumps), 0.5)), 0.5), 0.88)
 
 
-def _pad_material(name, rough=0.4):
-    """A soft adhesive pad or nose leather: a fine tight pebble, smoother than the skin around it."""
+def _leather_pad_material(name, rough=0.4):
+    """Nose leather (the primate muzzle): a fine tight pebble, smoother than the skin around it."""
     sh = sf.Shader(name)
     pebble = sh.remap(sh.voronoi(900.0, 0.9), 0.3, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.18, 0.0003)
@@ -3326,7 +3348,7 @@ def build_hand_primate():
     # A fur cuff where the furred limb meets the bare hand; closed at its top so it reads as a ruff.
     cuff_path = [Vector((0.0, 0.0, z)) for z in (-0.01, 0.0, 0.008, 0.016, 0.022)]
     cv, cf, _ = _tube(cuff_path, lambda i, a: (0.026, 0.0275, 0.027, 0.023, 0.0)[i] * (1.0 + 0.04 * math.sin(7 * a)), 20)
-    fur_mat = _fur_material("M_HandPrimateFurProc")
+    fur_mat = _primate_fur_material("M_HandPrimateFurProc")
     cuff = bc.mesh_object("Cuff", cv, cf, [fur_mat], parent=hand)
     fur_mat.name = "M_HandPrimateFur"
     objs = [hand, nails, cuff]
@@ -3362,22 +3384,89 @@ def build_hand_primate():
             "paint_mix": {"M_HandPrimateSkin": 0.35, "M_HandPrimateNail": 0.0, "M_HandPrimateFur": 0.9}, "revision": 2, **baked}
 
 
+# The frog foot's ankle, heel and sole as one lofted surface (revision 6), given by its side outline: each key is
+# a ring through a back-or-bottom outline point B and a front-or-top outline point F (y, z in mm), with the ring's
+# half width W across x and the superellipse exponents of its B half and F half (2 is round, 4 is a flat sole
+# with rounded edges). The rings run from the ankle top, where the limb meets it (centre y -12.8 mm, z 39.5 mm,
+# horizontal rings), down the back of the ankle into a heel that bulges back and down, and along the flat sole
+# (z 0) to under the toe roots, where the rings stand upright; the front outline turns from the ankle's front
+# into the instep along one concave curve.
+FROG_FOOT_KEYS = (((-21.3, 39.5), (-4.3, 39.5), 8.7, 2.0, 2.0),
+                  ((-21.8, 31.5), (-3.6, 31.5), 9.3, 2.0, 2.0),
+                  ((-23.0, 23.5), (-2.2, 24.0), 10.6, 2.0, 2.0),
+                  ((-25.0, 15.5), (0.6, 19.4), 12.4, 2.1, 2.0),
+                  ((-26.0, 8.5), (4.6, 17.4), 13.8, 2.3, 2.1),
+                  ((-24.0, 2.6), (8.8, 16.5), 14.8, 2.8, 2.2),
+                  ((-17.5, 0.0), (13.0, 15.9), 15.6, 3.4, 2.3),
+                  ((-9.0, 0.0), (17.0, 15.0), 16.6, 3.8, 2.4),
+                  ((0.0, 0.0), (20.5, 14.0), 18.0, 4.0, 2.4),
+                  ((8.0, 0.0), (23.2, 13.0), 19.5, 4.0, 2.4),
+                  ((15.5, 0.0), (25.8, 11.9), 20.4, 4.0, 2.4),
+                  ((22.0, 0.4), (28.2, 10.4), 19.8, 3.6, 2.4),
+                  ((27.0, 1.6), (30.6, 8.4), 16.0, 3.0, 2.3))
+
+
+def _frog_foot_body(sub=2, sides=24):
+    """(verts, faces) of the frog foot's ankle, heel and sole (FROG_FOOT_KEYS, Catmull-Rom between the keys with
+    `sub` rings per span). The ankle top rounds over through two shrinking rings to a centre 2.5 mm above its last
+    full ring; the sole's front closes the same way forward, under the toe roots."""
+    flat = [(b[0], b[1], f[0], f[1], w, pb, pf) for b, f, w, pb, pf in FROG_FOOT_KEYS]
+    n = len(flat)
+    rows = []
+    for i in range(n - 1):
+        p0, p1, p2, p3 = flat[max(i - 1, 0)], flat[i], flat[i + 1], flat[min(i + 2, n - 1)]
+        for k in range(sub):
+            t = k / sub
+            rows.append(tuple(0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t ** 3)
+                              for a, b, c, d in zip(p0, p1, p2, p3)))
+    rows.append(flat[-1])
+
+    def spow(c, p):
+        return math.copysign(abs(c) ** (2.0 / p), c)
+
+    rings = []
+    for by, bz, fy, fz, w, pb, pf in rows:
+        my, mz, dy, dz = (by + fy) / 2, (bz + fz) / 2, (fy - by) / 2, (fz - bz) / 2
+        ring = []
+        for j in range(sides):
+            a = 2 * math.pi * j / sides
+            p = pf if math.sin(a) > 0 else pb
+            u, v = spow(math.cos(a), p), spow(math.sin(a), p)
+            ring.append(Vector((w * u, my + dy * v, mz + dz * v)) * 0.001)
+        rings.append(ring)
+    top_c = sum(rings[0], Vector()) / sides
+    top = [[top_c + (q - top_c) * sc + Vector((0.0, 0.0, dz * 0.001)) for q in rings[0]] for sc, dz in ((0.4, 2.4), (0.72, 1.9))]
+    end_c = sum(rings[-1], Vector()) / sides
+    front = [[end_c + (q - end_c) * sc + Vector((0.0, dy * 0.001, 0.0)) for q in rings[-1]] for sc, dy in ((0.7, 1.6), (0.38, 2.6))]
+    seq = top + rings + front
+    verts = [tuple(q) for ring in seq for q in ring]
+    faces = []
+    for i in range(len(seq) - 1):
+        a0, b0 = i * sides, (i + 1) * sides
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a0 + j, b0 + j, b0 + k, a0 + k))
+    tc, fc = len(verts), len(verts) + 1
+    verts += [tuple(top_c + Vector((0.0, 0.0, 0.00255))), tuple(end_c + Vector((0.0, 0.003, 0.0)))]
+    last = (len(seq) - 1) * sides
+    for j in range(sides):
+        k = (j + 1) % sides
+        faces.append((tc, j, k))
+        faces.append((fc, last + k, last + j))
+    return verts, faces
+
+
 def build_foot_frog():
-    """A tree frog's foot standing on a fleshy sole: a thick ankle coming down at a slant from behind onto a
-    plump sole with a heel pad, five knuckled toes fanned forward (and a little out, never back), a broad web
+    """A tree frog's foot standing on a fleshy sole: one smooth form from the ankle top down the back of the ankle
+    into a rounded heel and along a flat, widening sole (no seams between ankle, heel and sole), five knuckled toes fanned forward (and a little out, never back), a broad web
     reaching past the first knuckle, and a broad round sticky disc at each tip in a paler, glossier pad skin.
     H1_Spread splays the toes, H2_Long lengthens them."""
     verts, fcs = [], []
     sole_c = Vector((0.0, 0.004, 0.009))
-    # The fleshy sole: wider at the front where the toes leave it, with a separate plump heel pad.
-    bc.append(verts, fcs, *_blob(sole_c, 0.022, 0.028, 0.0105, power=0.85,
-                                 shape=lambda n: (0.72 + 0.28 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
-    bc.append(verts, fcs, *_blob(Vector((0.0, -0.008, 0.0085)), 0.017, 0.016, 0.0085, power=0.85))   # sunk into the sole, no collar
-    # A thick ankle slanting down and forward from behind, flaring into the sole.
-    # Short (half the old height) and tapering: narrow where the limb meets it, flaring wide into the sole.
-    apath = [Vector(p) for p in ((0.0, -0.013, 0.04), (0.0, -0.011, 0.033), (0.0, -0.008, 0.025), (0.0, -0.004, 0.018), (0.0, 0.0, 0.0125), (0.0, 0.004, 0.009))]
-    av, af, _ = _tube(apath, lambda i, a: (0.0092, 0.0102, 0.0118, 0.0138, 0.0152, 0.014)[i], 18)
-    bc.append(verts, fcs, av, af)
+    # The ankle, heel and sole: one closed surface (revision 6; was a sole blob, a heel blob and an ankle tube
+    # meeting at creases).
+    body_v, body_f = _frog_foot_body()
+    bc.append(verts, fcs, body_v, body_f)
     ts = [k / 8 for k in range(9)]
     paths, discs = [], []
     for ang, length in ((-32.0, 0.042), (-16.0, 0.053), (0.0, 0.06), (15.0, 0.064), (30.0, 0.05)):
@@ -3399,7 +3488,7 @@ def build_foot_frog():
         r = 0.0098
         dv, df = _blob(Vector((0.0, 0.0, 0.0)), 1.0, 1.0, 1.0, sub=3)
         bc.append(pv, pf, [tuple(c + Vector((0.0, 0.0, 0.0042)) + side * (x * r) + d * (y * r * 0.92) + Vector((0.0, 0.0, z * r * 0.5 - (0.0012 if z < 0 else 0.0)))) for x, y, z in dv], df)
-    pad_mat = _pad_material("M_FootFrogPadProc")
+    pad_mat = _frog_disc_material("M_FootFrogPadProc")
     pads = bc.mesh_object("Pads", _ground(pv), pf, [pad_mat], parent=foot)
     pad_mat.name = "M_FootFrogPad"
     wv, wf = [], []
@@ -3414,22 +3503,68 @@ def build_foot_frog():
             sag = 0.005 * s_ ** 2 * math.sin(math.pi * c)
             p = p - (a.lerp(b, 0.5) - sole_c).normalized() * sag
             return Vector((p.x, p.y, max(0.0035, p.z + 0.0012)))
+        n0 = len(wv)
         _membrane(wv, wf, point, 6, 6, thickness=0.0022, facing=Vector((0.0, 0.0, 1.0)))
+        # Close the scalloped free edge (s = 1) between the two layers (revision 6): left open, it showed as a
+        # dark slit along the web's edge from the front and side.
+        w, layer = 7, 7 * 7
+        for c in range(6):
+            a, b = n0 + 6 * w + c, n0 + 6 * w + c + 1
+            quad = (a, b, b + layer, a + layer)
+            out = Vector(wv[a]) - Vector(wv[a - w])
+            nrm = (Vector(wv[b]) - Vector(wv[a])).cross(Vector(wv[a + layer]) - Vector(wv[a]))
+            wf.append(quad if nrm.dot(out) > 0 else quad[::-1])
     web_mat = _wet_skin_material("M_FootFrogWebProc", scale=160.0, rough=0.6)
     web = bc.mesh_object("Web", wv, wf, [web_mat], parent=foot, fix_normals=False)
     web_mat.name = "M_FootFrogWeb"
     objs = [foot, pads, web]
+    # The ankle, heel and sole keep within 0.35 mm of their loft (at the default 0.8 mm their outline was polygonal).
     baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#5E9A44")), "M_FootFrogPad": sf.tint(_lin("#E2D6A2")),
-                                         "M_FootFrogWeb": sf.tint(_lin("#2C4A1E"))}, keep=("Pads",))
+                                         "M_FootFrogWeb": sf.tint(_lin("#2C4A1E"))}, keep=("Pads",),
+                  accept={"FootFrog": _points_fit(_ground(body_v), 0.00035)})
     pts = _check_pivot("foot_frog", 0.0, ground=True)
     reach = max(math.hypot(p.x, p.y) for p in pts)
     handles = _foot_handles(objs, 8.0, 0.01, 0.3)   # capped so the outer toes stay near 40 degrees
     rules = _rules("foot_frog", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
     rules["handles"] = handles
     rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
-    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle on a fleshy sole with a sunk heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
+    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle flowing down into a rounded heel and a flat fleshy sole as one form, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
             "category": "part", "part_type": "foot_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 5, **baked}
+            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 6,
+            "review_notes": FOOT_FROG_REVIEW, **baked}
+
+
+FOOT_FROG_REVIEW = {
+    "revision": 6,
+    "cause": "Revision 5 was three separate closed pieces: an ankle tube with a flat top, a sole blob and a heel blob. In "
+             "the Blender gray views and on the hopper the ankle met the sole in a crease ring, the heel read as a lump "
+             "stuck on behind it with its own seam, and the ankle ended in a flat disc with a hard rim. The web's free "
+             "edge was two open layers 4.4 mm apart, which showed as dark slits between the toes from the front.",
+    "change": "The ankle, heel and sole are one closed lofted surface (FROG_FOOT_KEYS, _frog_foot_body): each ring runs "
+              "between a back-or-bottom outline point and a front-or-top one, so the side outline is drawn directly. The "
+              "back of the ankle runs down into a heel that bulges about 3 mm back and down, the sole lies flat on the "
+              "ground and widens to 20 mm half width under the toe roots, and the front of the ankle turns into the "
+              "instep along one concave curve. The ankle top rounds over through two shrinking rings. The decimation "
+              "keeps the loft within 0.35 mm (at the default 0.8 mm the heel's outline was polygonal). The web's free "
+              "edge is closed with rim faces. Toes, web shape, pads, materials, handles (H1_Spread, H2_Long), the ankle "
+              "top where the limb meets it (z 0.04 m, y -0.013 m), the footprint (0.098 m) and sink (0) are unchanged. "
+              "2498 of 2500 triangles (was 2361); 0.106 x 0.12 x 0.042 m (was 0.106 x 0.118 x 0.042: the heel reaches "
+              "2 mm further back).",
+    "gate1_shape": "pass: Blender gray side, back, three-quarter and front: one smooth form from a rounded ankle top down "
+                   "into the heel and along the sole, with no crease ring, no separate heel lump and no slit along the "
+                   "web's edge (before: all three). H1_Spread and H2_Long at 1000 move only the toes, web and front of "
+                   "the sole. Remaining: seen straight from behind, the heel's lower corners still show two or three "
+                   "flat segments; the budget has 2 triangles left.",
+    "gate2_materials": "pass (unchanged): wet green skin, pale glossy disc pads and the darker green web read apart in "
+                       "the Blender material view and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot "
+                      "capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the Godot capture shows the heel and ankle as one rounded "
+                   "form; on the hopper preset (tools/godot/part_on_body_shot.gd, side view on the bare scene) the ankle "
+                   "flows into the heel and sole where revision 5 showed a seam, and at the world's gameplay distance "
+                   "the feet read as green feet with pale pads. The hopper's hind legs end above the feet: placement by "
+                   "the anchor resolver, not the part (see Known issues in docs/art/creature_parts_gates.md).",
+}
 
 
 def build_foot_primate():
@@ -3468,7 +3603,7 @@ def build_foot_primate():
     nail_mat.name = "M_FootPrimateNail"
     cuff_path = [Vector((0.0, -0.036 + 0.0015 * k, z)) for k, z in enumerate((0.08, 0.072, 0.064, 0.056, 0.05))]
     cv, cf, _ = _tube(cuff_path, lambda i, a: (0.02, 0.0215, 0.022, 0.02, 0.0)[i] * (1.0 + 0.04 * math.sin(7 * a)), 20)
-    fur_mat = _fur_material("M_FootPrimateFurProc")
+    fur_mat = _primate_fur_material("M_FootPrimateFurProc")
     cuff = bc.mesh_object("Cuff", cv, cf, [fur_mat], parent=foot)
     fur_mat.name = "M_FootPrimateFur"
     objs = [foot, nails, cuff]
@@ -3518,18 +3653,17 @@ EAR_N = EAR_U.cross(EAR_V).normalized()     # the ear's face: forward (+Y) and o
 EAR_SINK = 0.006
 
 
-def build_ear_round():
-    """A monkey's ear standing out from the side of the head (symmetric part; the runtime places it either side):
-    one continuous thick flap, wider at the top than at the root. Its front is a single sculpted surface: a deep
-    concha bowl in the lower front, a soft antihelix ridge rising out of the flap round the top and back of the
-    bowl, and a flat tragus flap blending out of the bowl's front lip. The edge is rolled all the way round (no
-    cut faces): a fat helix over the top and down the back, thinning to a small curl at the notch low on the
-    front edge. Fur on the back, which is thicker behind the bowl and swells into the root (no separate collar:
-    a stuck-on roll read as paper leaves). H1_Perk tips it forward, H2_Size scales it."""
-    if EAR_N.y < 0:
-        raise RuntimeError("ear face must point forward")
+def _ear_round_shell(rings=20, segs=56, roll=12, ease0=0.72, scapha=0.0006):
+    """The round ear's one closed shell, as (verts, faces, face materials, rim indices, edge indices): the front grid
+    from the centre out, the rolled edge, then the back grid back in. Material 1 is skin, 0 fur. Revision 5: the flap
+    eases into the helix with zero slope at both ends from rho `ease0` (the old squared ramp met the roll at a 50 to
+    70 degree bend, which shaded as a crease inside the rim), a shallow scapha groove (`scapha` metres deep under the
+    fat helix) keeps the helix reading as a rolled ridge, and the roll is a cubic Hermite from the front rim to the
+    back rim that leaves and meets both surfaces along their own slope. Every turn between neighbouring rows near
+    the rim stays under about 26 degrees, like the bowl's and the antihelix's own. The rim indices (the last front ring, the roll and
+    the last back ring) are what the decimation must keep close, and the edge indices (the three outermost roll
+    rows, which make the outline seen from the front or back) closest, so the outline stays round."""
     centre_u, R = 0.031, 0.027
-    rings, segs, roll = 20, 56, 8
     notch_phi = math.radians(-118.0)
 
     def wrap(d):
@@ -3558,13 +3692,14 @@ def build_ear_round():
     tu, tv = flat(0.7, math.radians(-100.0))
 
     def lift(rho, phi):
-        return helix(phi) * max(0.0, (rho - 0.82) / 0.18) ** 2     # the flap rises into the helix roll
+        return helix(phi) * bc.smoothstep((rho - ease0) / (1.0 - ease0))     # the flap rises into the helix roll
 
     def front_h(rho, phi):
         u, v = flat(rho, phi)
         anti = 0.0026 * gauss((rho - 0.68) / 0.14) * gauss(wrap(phi - math.radians(25.0)) / 1.05)
         trag = 0.0022 * gauss(math.hypot((u - tu) / 0.0065, (v - tv) / 0.0085))     # a soft mound out of the lip
-        return -bowl(u, v) - 0.0022 * (1.0 - rho * rho) + anti + trag + lift(rho, phi) + 0.0011
+        groove = scapha * gauss((rho - 0.84) / 0.07) * helix(phi) / 0.0044     # the scapha, inside the helix
+        return -bowl(u, v) - 0.0022 * (1.0 - rho * rho) + anti + trag + lift(rho, phi) + 0.0011 - groove
 
     def back_h(rho, phi):
         u, v = flat(rho, phi)
@@ -3578,7 +3713,6 @@ def build_ear_round():
     def ring_pts(r):
         return [(r / rings, 2 * math.pi * s / segs) for s in range(segs)]
 
-    # One closed shell: the front grid from the centre out, the rolled edge, then the back grid back in.
     verts, fcs, mats = [], [], []
     rows, row_mat = [[0]], [1]
     verts.append(tuple(at(0.0, 0.0, front_h(0.0, 0.0))))
@@ -3586,22 +3720,32 @@ def build_ear_round():
         rows.append([len(verts) + s for s in range(segs)])
         verts.extend(tuple(at(rho, phi, front_h(rho, phi))) for rho, phi in ring_pts(r))
         row_mat.append(1)
+    rim, outer = list(rows[-1]), []
+    # The roll: per meridian a cubic Hermite from the front rim point, leaving along the front surface's slope, to
+    # the back rim point, arriving along the back surface's. Tangent length 1.8 x the rim's thickness keeps the old
+    # semicircle's reach (0.45 x the thickness past the rim).
+    curves = []
+    for s in range(segs):
+        phi = 2 * math.pi * s / segs
+        pf, pb = at(1.0, phi, front_h(1.0, phi)), at(1.0, phi, back_h(1.0, phi))
+        tf = (pf - at(0.99, phi, front_h(0.99, phi))).normalized()
+        tb = (pb - at(0.99, phi, back_h(0.99, phi))).normalized()
+        span = 1.8 * (pf - pb).length
+        curves.append((pf, tf * span, pb, -tb * span))
     for k in range(1, roll):
-        a = math.pi * k / roll
-        row = []
-        for s in range(segs):
-            phi = 2 * math.pi * s / segs
-            hf, hb = front_h(1.0, phi), back_h(1.0, phi)
-            mid, half = 0.5 * (hf + hb), 0.5 * (hf - hb)
-            u0, v0 = flat(1.0, phi)
-            u1, v1 = flat(0.97, phi)
-            out = (EAR_U * (u0 - u1) + EAR_V * (v0 - v1)).normalized()
-            row.append(len(verts))
-            verts.append(tuple(at(1.0, phi, mid + half * math.cos(a)) + out * (half * 0.9 * math.sin(a))))
-        rows.append(row)
+        t = k / roll
+        h00, h10 = 2 * t ** 3 - 3 * t * t + 1, t ** 3 - 2 * t * t + t
+        h01, h11 = -2 * t ** 3 + 3 * t * t, t ** 3 - t * t
+        rows.append([len(verts) + s for s in range(segs)])
+        rim.extend(rows[-1])
+        if abs(k - roll / 2) <= 1:
+            outer.extend(rows[-1])
+        verts.extend(tuple(pf * h00 + mf * h10 + pb * h01 + mb * h11) for pf, mf, pb, mb in curves)
         row_mat.append(1 if k < roll // 2 else 0)
     for r in range(rings, 0, -1):
         rows.append([len(verts) + s for s in range(segs)])
+        if r == rings:
+            rim.extend(rows[-1])
         verts.extend(tuple(at(rho, phi, back_h(rho, phi))) for rho, phi in ring_pts(r))
         row_mat.append(0)
     rows.append([len(verts)])
@@ -3619,12 +3763,49 @@ def build_ear_round():
             else:
                 fcs.append((a[s], b[s], b[t], a[t]))
             mats.append(m)
-    fur_mat = _fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
+    return verts, fcs, mats, rim, outer
+
+
+EAR_RIM_TOL = (0.00013, 0.00026)     # the outline rows, the rest of the rim (metres)
+
+
+def _ear_round_rim_fits(outline, rim):
+    """A decimation test: every high-detail outline point lies within EAR_RIM_TOL[0] of the reduced surface and
+    every other rim point within EAR_RIM_TOL[1]."""
+    def fits(mesh):
+        tree = BVHTree.FromPolygons([v.co.copy() for v in mesh.vertices], [tuple(p.vertices) for p in mesh.polygons])
+        for points, tol in ((outline, EAR_RIM_TOL[0]), (rim, EAR_RIM_TOL[1])):
+            for p in points:
+                hit = tree.find_nearest(p)
+                if hit[0] is None or hit[3] > tol:
+                    return False
+        return True
+    return fits
+
+
+def build_ear_round():
+    """A monkey's ear standing out from the side of the head (symmetric part; the runtime places it either side):
+    one continuous thick flap, wider at the top than at the root. Its front is a single sculpted surface: a deep
+    concha bowl in the lower front, a soft antihelix ridge rising out of the flap round the top and back of the
+    bowl, and a flat tragus flap blending out of the bowl's front lip. The edge is rolled all the way round (no
+    cut faces): a fat helix over the top and down the back, thinning to a small curl at the notch low on the
+    front edge. Fur on the back, which is thicker behind the bowl and swells into the root (no separate collar:
+    a stuck-on roll read as paper leaves). H1_Perk tips it forward, H2_Size scales it."""
+    if EAR_N.y < 0:
+        raise RuntimeError("ear face must point forward")
+    verts, fcs, mats, rim, outer = _ear_round_shell()
+    fur_mat = _mammal_fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
     skin = _skin_material("M_EarRoundSkinProc", scale=420.0, lo=0.86, rough=0.55, pore=0.14)
     ear = bc.mesh_object("EarRound", verts, fcs, [fur_mat, skin], mats)
     skin.name, fur_mat.name = "M_EarRoundSkin", "M_EarRoundFur"
     objs = [ear]
-    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A"))}, tolerance=0.0003)
+    # The interior keeps the 0.3 mm tolerance; the rolled rim must stay within EAR_RIM_TOL of its high-detail
+    # points, so the outline stays round (at 0.3 mm everywhere it came out a 28-gon with 14 mm sides).
+    outer_set = set(outer)
+    outline_pts = [Vector(verts[i]) for i in outer]
+    rim_pts = [Vector(verts[i]) for i in rim if i not in outer_set]
+    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A"))}, tolerance=0.0003,
+                  accept={"EarRound": _ear_round_rim_fits(outline_pts, rim_pts)})
     pts = _check_pivot("ear_round", EAR_SINK + 0.002)
     foot = _footprint(pts)
 
@@ -3639,7 +3820,35 @@ def build_ear_round():
     rules["handles"] = handles
     return {"purpose": "Creature detail part (PROPOSED): a monkey's ear, one thick flap wider at the top with a rolled helix over the top and back, a soft notch and flat tragus at the root, a concha bowl and antihelix carved into the front, bare skin inside and fur behind, thickest behind the bowl and at the root.",
             "category": "part", "part_type": "ear_round", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 4, **baked}
+            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 5, "review_notes": EAR_ROUND_REVIEW, **baked}
+
+
+# Finish gates (docs/art/creature_parts_gates.md), kept here because the export rewrites the whole record.
+EAR_ROUND_REVIEW = {
+    "revision": 5,
+    "change": "Rim crease: the flap now eases into the helix with zero slope at both ends (rho 0.72 to 1) instead of "
+              "a squared ramp from 0.82, a shallow scapha groove keeps the helix reading as a rolled ridge, and the "
+              "roll is a cubic Hermite per meridian that leaves the front rim and meets the back rim along their own "
+              "slopes (it was a semicircle that started flat, a 50 to 70 degree bend that shaded as a line inside "
+              "the rim). The largest turn between neighbouring rows near the rim is now 26 degrees, like the bowl's "
+              "and antihelix's own. Rim facets: the decimation keeps the three outermost roll rows within 0.13 mm "
+              "and the rest of the rim within 0.26 mm of the high mesh (the interior keeps 0.3 mm); at 0.3 mm "
+              "everywhere the outline was a 28-gon with sides up to 14 mm. 1070 of 1200 triangles; dimensions, "
+              "pivot, sink, footprint, handles and materials unchanged.",
+    "gate1_shape": "pass: gray front, side and 3/4 (Blender) and the head-sphere front, 3/4 and side "
+                   "(tools/ear_round_shots.gd) show a smooth oval outline with no straight runs or lumps and no dark "
+                   "line inside the rim; the rolled helix, the scapha, the antihelix round the bowl, the tragus and "
+                   "the notch read. Before: lumpy outline, a kink at the top of the notch side, a crease line along "
+                   "the inside of the top rim.",
+    "gate2_materials": "pass (materials unchanged): pink pored skin on the front and the roll's front half, brown "
+                       "grained fur behind, split at the roll's apex, in the Blender material views and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py), the neutral Godot "
+                      "capture (tools/godot/capture_part.gd) and the head-sphere shots; no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the monkey preset in the creature editor scene "
+                   "(tools/godot/part_on_body_shot.gd) at the world's gameplay distance reads as a round ear on the "
+                   "side of the head; close up the outline stays smooth at rest and with H1_Perk and H2_Size at "
+                   "1000.",
+}
 
 
 def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):
@@ -3659,12 +3868,32 @@ def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):
     return verts, faces
 
 
+def _disc_faces(fcs, base, rings, segs):
+    """Faces of a disc laid out as a centre vertex at `base` and then `rings` rings of `segs` vertices each (rings
+    counter-clockwise seen from +Z), wound to face +Z."""
+    for k in range(segs):
+        fcs.append((base, base + 1 + k, base + 1 + (k + 1) % segs))
+    for r in range(1, rings):
+        a0, b0 = base + 1 + (r - 1) * segs, base + 1 + r * segs
+        for k in range(segs):
+            t = (k + 1) % segs
+            fcs.append((a0 + k, b0 + k, b0 + t, a0 + t))
+
+
 MUZZLE_SINK = 0.008
 MZ_RX, MZ_RY = 0.044, 0.048
 MZ_EYES = ((-0.0155, 0.009), (0.0155, 0.009))
+MZ_BROW = 0.010         # the brow ridge's height over the face plane (was 0.0135): it now sits under the nose tip
+# The snout's side profile at x = 0, as the total surface height (mm) at y (m) before the mouth crease, lip roll and
+# chin pad are added: it rises from the nose bridge between the eyes (y +2 mm, 8 mm) to the nose tip (y -14 mm,
+# 20 mm), rounds over the upper lip (y -20 mm, 18.7 mm) and recedes past the mouth line to the chin (y -36 mm, 8 mm).
+# None marks where the snout term is zero.
+MZ_PROFILE = ((0.008, None), (0.004, 6.0), (0.002, 7.8), (-0.001, 10.6), (-0.004, 13.7), (-0.008, 17.7), (-0.012, 19.9),
+              (-0.016, 19.8), (-0.020, 18.7), (-0.023, 17.3), (-0.0255, 16.0), (-0.028, 14.6), (-0.031, 12.6),
+              (-0.034, 10.0), (-0.037, 7.2), (-0.040, 5.0), (-0.044, None))
 
 
-def _smooth(e0, e1, v):
+def _mz_smoothstep(e0, e1, v):
     t = min(1.0, max(0.0, (v - e0) / (e1 - e0)))
     return t * t * (3.0 - 2.0 * t)
 
@@ -3674,52 +3903,138 @@ def _mz_brow_y(x):
     return 0.0205 + 0.0035 * math.exp(-((abs(x) - 0.0155) / 0.009) ** 2) - 0.003 * (x / 0.034) ** 2
 
 
-def _mz_muzzle(x, y):
-    """0..1 plateau of the squared muzzle block (a superellipse with steep sides)."""
-    m = ((x / 0.021) ** 4 + ((y + 0.016) / 0.0165) ** 4) ** 0.25
-    return 1.0 - _smooth(0.45, 1.25, m)
-
-
 def _mz_socket(x, y):
     """(depth 0..1, rim 0..1) of the nearer eye socket."""
     best = (0.0, 0.0)
     for ex, ey in MZ_EYES:
         d = math.sqrt(((x - ex) / 0.0098) ** 2 + ((y - ey) / 0.0088) ** 2)
-        cur = (1.0 - _smooth(0.6, 1.05, d), math.exp(-((d - 1.12) / 0.16) ** 2))
+        cur = (1.0 - _mz_smoothstep(0.6, 1.05, d), math.exp(-((d - 1.12) / 0.16) ** 2))
         best = max(best, cur)
     return best
 
 
-def _mz_height(x, y):
-    """The face plate's surface as one height field: a gently domed face plane, two deep eye sockets with a
-    raised rim, a heavy brow ridge fused into the plate above them, and a squared muzzle block below that
-    stands well proud of the face with a flat front; the rim rolls back into the skin."""
+def _mz_face(x, y):
+    """The face plate without the snout: a gently domed face plane, two deep eye sockets with a raised rim, the
+    brow ridge fused into the plate above them and the groove down the nose bridge."""
     r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
     z = 0.006 - 0.0035 * r2
     deep, rim = _mz_socket(x, y)
     z += 0.0015 * rim - 0.0115 * deep
     by = _mz_brow_y(x)
-    xm = 1.0 - _smooth(0.032, 0.040, abs(x))
-    z += 0.0135 * xm * math.exp(-((y - by) / 0.0058) ** 2) if y < by else 0.0135 * xm * math.exp(-((y - by) / 0.009) ** 2)
-    z += 0.0135 * _mz_muzzle(x, y)
-    z -= 0.0025 * math.exp(-(x / 0.004) ** 2) * _smooth(-0.005, 0.0, y) * (1.0 - _smooth(0.012, 0.018, y))  # nose-bridge groove
+    xm = 1.0 - _mz_smoothstep(0.032, 0.040, abs(x))
+    z += MZ_BROW * xm * math.exp(-((y - by) / 0.0058) ** 2) if y < by else MZ_BROW * xm * math.exp(-((y - by) / 0.009) ** 2)
+    z -= 0.0025 * math.exp(-(x / 0.004) ** 2) * _mz_smoothstep(-0.005, 0.0, y) * (1.0 - _mz_smoothstep(0.012, 0.018, y))  # nose-bridge groove
+    return z
+
+
+def _mz_clamped_spline(knots):
+    """A cubic spline through (x, y) knots (x increasing) with zero slope at both ends; returns f(x), 0 outside."""
+    xs, ys = [k[0] for k in knots], [k[1] for k in knots]
+    n = len(xs)
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    a, b, c, d = [0.0] * n, [0.0] * n, [0.0] * n, [0.0] * n
+    a[0], c[0], d[0] = 2 * h[0], h[0], 3 * (ys[1] - ys[0]) / h[0]
+    for i in range(1, n - 1):
+        a[i], b[i], c[i] = 2 * (h[i - 1] + h[i]), h[i - 1], h[i]
+        d[i] = 3 * ((ys[i + 1] - ys[i]) / h[i] - (ys[i] - ys[i - 1]) / h[i - 1])
+    a[-1], b[-1], d[-1] = 2 * h[-1], h[-1], -3 * (ys[-1] - ys[-2]) / h[-1]
+    cp, dp = [0.0] * n, [0.0] * n
+    cp[0], dp[0] = c[0] / a[0], d[0] / a[0]
+    for i in range(1, n):
+        m = a[i] - b[i] * cp[i - 1]
+        cp[i] = c[i] / m if i < n - 1 else 0.0
+        dp[i] = (d[i] - b[i] * dp[i - 1]) / m
+    cc = [0.0] * n
+    cc[-1] = dp[-1]
+    for i in range(n - 2, -1, -1):
+        cc[i] = dp[i] - cp[i] * cc[i + 1]
+    segs = [(xs[i], ys[i], (ys[i + 1] - ys[i]) / h[i] - h[i] * (2 * cc[i] + cc[i + 1]) / 3, cc[i], (cc[i + 1] - cc[i]) / (3 * h[i]))
+            for i in range(n - 1)]
+
+    def f(v):
+        if v <= xs[0] or v >= xs[-1]:
+            return 0.0
+        for i in range(n - 1):
+            if v <= xs[i + 1]:
+                x0, y0, s1, s2, s3 = segs[i]
+                t = v - x0
+                return y0 + t * (s1 + t * (s2 + t * s3))
+        return 0.0
+    return f
+
+
+# The snout's added height along x = 0: the profile minus the face plate under it, as a smooth spline.
+_MZ_SNOUT_Y = _mz_clamped_spline(sorted((y, 0.0 if t is None else t / 1000.0 - _mz_face(0.0, y)) for y, t in MZ_PROFILE))
+
+
+def _mz_mouth_y(x):
+    """The mouth line across the muzzle front, curving up at the corners."""
+    return -0.0255 + 0.0035 * (x / 0.014) ** 2
+
+
+def _mz_snout_w(y):
+    """The snout's half width: a narrow nose bridge (7 mm) between the eyes, widening to the squared muzzle
+    (21.5 mm) at the nose and lips, a little narrower again at the chin."""
+    return (0.007 + 0.0145 * _mz_smoothstep(0.004, -0.014, y)) * (1.0 - 0.22 * _mz_smoothstep(-0.028, -0.040, y))
+
+
+def _mz_snout_mask(x, y):
+    """0..1 across the snout: flat over its middle, falling steeply at its sides (the squared front outline)."""
+    return 1.0 - _mz_smoothstep(0.55, 1.15, abs(x) / _mz_snout_w(y))
+
+
+def _mz_snout(x, y):
+    """The snout's height over the face plate: the side profile, a crease at the mouth line, the lower lip rolled
+    out under it, a shallow groove and then a small chin pad."""
+    my = _mz_mouth_y(x)
+    z = _MZ_SNOUT_Y(y)
+    z -= 0.0010 * math.exp(-((y - my) / 0.0014) ** 2)
+    z += 0.0006 * math.exp(-((y - my + 0.0030) / 0.0016) ** 2)
+    z -= 0.0005 * math.exp(-((y + 0.0315) / 0.0016) ** 2)
+    z += 0.0010 * math.exp(-((y + 0.0345) / 0.0026) ** 2) * math.exp(-(x / 0.011) ** 2)
+    return z * _mz_snout_mask(x, y)
+
+
+def _mz_height(x, y):
+    """The face plate's surface as one height field: the face plane with its sockets and brow (_mz_face) and the
+    snout standing out of it below the eyes; the rim rolls back into the skin."""
+    r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
+    z = _mz_face(x, y) + _mz_snout(x, y)
     edge = max(0.0, (math.sqrt(r2) - 0.86) / 0.14)
     return z - (z + MUZZLE_SINK * 0.9) * edge ** 2
+
+
+# The nose pad: an oval of leather laid over the nose tip, narrower at its lower end, standing up to 0.9 mm proud
+# of the snout with its rim tucked 0.5 mm under it.
+MZ_NOSE = (0.0, -0.0105, 0.0105, 0.0064)     # centre x, y, half width, half height
+
+
+def _mz_nose_u(x, y):
+    cx, cy, rx, ry = MZ_NOSE
+    v = (y - cy) / ry
+    return math.hypot((x - cx) / (rx * (1.0 - 0.2 * max(0.0, -v))), v)
+
+
+def _mz_nose_top(x, y):
+    u = _mz_nose_u(x, y)
+    return _mz_height(x, y) + 0.0014 * math.sqrt(max(0.0, 1.0 - u * u)) - 0.0005
 
 
 def _mz_overhang(x, y, z):
     """Pull the brow's lower face down over the sockets so the ridge really overhangs them."""
     by = _mz_brow_y(x)
-    w = math.exp(-((y - by) / 0.006) ** 2) * (1.0 - _smooth(0.032, 0.040, abs(x)))
-    return (x, y - 0.004 * w * _smooth(0.004, 0.012, z), z)
+    w = math.exp(-((y - by) / 0.006) ** 2) * (1.0 - _mz_smoothstep(0.032, 0.040, abs(x)))
+    return (x, y - 0.004 * w * _mz_smoothstep(0.004, 0.012, z), z)
 
 
 def build_muzzle_primate():
     """A monkey's face plate, mounted on the front of the head (+Z out of the face, +Y up toward the brow): a
-    bare face plane with two deep eye sockets (room for eye parts), a heavy brow ridge fused into the plate that
-    overhangs them, a squared muzzle block with a broad dark nose pad and two nostrils, a mouth line across the
-    muzzle, and locks of fur growing from the face edge. H1_Snout pushes the muzzle out, H2_Brow makes the brow heavier."""
-    rings, segs = 18, 48
+    bare face plane with two deep eye sockets (room for eye parts), a brow ridge fused into the plate that
+    overhangs them, a snout with a primate's side profile (a narrow nose bridge rising between the eyes to a
+    rounded nose tip, an upper lip rolling over into the mouth line, a lower lip and a small receding chin) and a
+    squared front, a broad dark nose pad over the nose tip with two nostrils, and locks of fur growing from the
+    face edge. H1_Snout pushes the snout out, H2_Brow makes the brow heavier."""
+    rings, segs = 26, 64
     verts, fcs = [(0.0, 0.0, _mz_height(0.0, 0.0))], []
     for r in range(1, rings + 1):
         for s in range(segs):
@@ -3738,45 +4053,58 @@ def build_muzzle_primate():
     hole_mat = hole_sh.out(_grey(hole_sh, hole_sh.remap(hole_sh.noise(400.0, 2.0), 0.3, 0.7), 0.85), 0.9)
     face = bc.mesh_object("MuzzlePrimate", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in verts], fcs, [skin])
     skin.name = "M_MuzzlePrimateSkin"
-    # The nose pad: broad, flat and dark across the top of the muzzle.
-    top = _mz_height(0.0, -0.011)
-    nv, nf = _blob(Vector((0.0, -0.0105, top - 0.0012)), 0.0105, 0.0062, 0.0026, sub=2, power=0.7,
-                   shape=lambda n: (1.0 - 0.25 * max(0.0, -n.y), 1.0, 0.0))
-    nose_mat = _pad_material("M_MuzzlePrimateNoseProc")
-    nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face)
+    # The nose pad: a leather oval laid over the nose tip, following the snout's curve, its rim tucked under.
+    cx, cy, rx, ry = MZ_NOSE
+    nv, nf = [(cx, cy, _mz_nose_top(cx, cy))], []
+    lr, ls = 5, 24
+    for r in range(1, lr + 1):
+        u = math.sin(0.5 * math.pi * r / lr)       # rings crowd toward the rim, where the pad rolls under
+        for k in range(ls):
+            a = 2 * math.pi * k / ls
+            v = u * math.sin(a)
+            x, y = cx + rx * (1.0 - 0.2 * max(0.0, -v)) * u * math.cos(a), cy + ry * v
+            nv.append((x, y, _mz_nose_top(x, y)))
+    _disc_faces(nf, 0, lr, ls)
+    nose_mat = _leather_pad_material("M_MuzzlePrimateNoseProc")
+    nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face, fix_normals=False)
     nose_mat.name = "M_MuzzlePrimateNose"
-    # The nostrils (set into the pad's lower edge) and the mouth line across the muzzle front: dark recesses.
+    # The nostrils (two dark ovals set into the pad's lower part, on the front of the nose tip, tilted out at the
+    # top) and the mouth line along the crease across the muzzle front: dark recesses.
     hv, hf = [], []
     for sx in (-1.0, 1.0):
-        bc.append(hv, hf, *_blob(Vector((sx * 0.0048, -0.0138, top + 0.0016)), 0.0022, 0.0014, 0.0012, sub=1))
+        base = len(hv)
+        ox, oy, tilt = sx * 0.0047, -0.0142, sx * math.radians(25.0)
+        hv.append((ox, oy, _mz_nose_top(ox, oy) + 0.00015))
+        for r in range(1, 3):
+            for k in range(10):
+                a = 2 * math.pi * k / 10
+                lx, ly = 0.0021 * r / 2 * math.cos(a), 0.0012 * r / 2 * math.sin(a)
+                x, y = ox + lx * math.cos(tilt) - ly * math.sin(tilt), oy + lx * math.sin(tilt) + ly * math.cos(tilt)
+                hv.append((x, y, _mz_nose_top(x, y) + (0.00015 if r < 2 else 0.00005)))
+        _disc_faces(hf, base, 2, 10)
     mouth = []
     for k in range(9):
         x = -0.014 + 0.028 * k / 8
-        y = -0.0255 + 0.0035 * (x / 0.014) ** 2
+        y = _mz_mouth_y(x)
         mouth.append(Vector((x, y, _mz_height(x, y) + 0.0002)))
     mv, mf, _ = _tube(mouth, lambda i, a: 0.0011 * math.sin(math.pi * (0.05 + 0.9 * i / 8)) ** 0.5, 5)
-    bc.append(hv, hf, mv, mf)
+    bc.append(hv, hf, mv, [q[::-1] for q in mf])     # _tube winds its faces inward
     for ex, ey in MZ_EYES:
         base = len(hv)
-        lr, ls = 4, 20
+        lr, ls = 2, 12
         hv.append((ex, ey, _mz_height(ex, ey) + 0.0012))
         for r in range(1, lr + 1):
             for k in range(ls):
                 a = 2 * math.pi * k / ls
                 x, y = ex + 0.0098 * 0.55 * r / lr * math.cos(a), ey + 0.0088 * 0.55 * r / lr * math.sin(a)
                 hv.append(_mz_overhang(x, y, _mz_height(x, y) + 0.0012))
-        for k in range(ls):
-            hf.append((base, base + 1 + (k + 1) % ls, base + 1 + k))
-        for r in range(1, lr):
-            a0, b0 = base + 1 + (r - 1) * ls, base + 1 + r * ls
-            for k in range(ls):
-                t = (k + 1) % ls
-                hf.append((a0 + k, a0 + t, b0 + t, b0 + k))
-    holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face)
+        _disc_faces(hf, base, lr, ls)
+    # Every piece is wound to face out of the face (+Z): open discs are left as authored, not re-oriented.
+    holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face, fix_normals=False)
     hole_mat.name = "M_MuzzlePrimateCavity"
     # The fur frame: a thick scalloped ruff over the crown and down the cheeks, tapering out at the jaw so the
     # chin stays bare; each scallop a clump of fur swelling outward, not a flat even ring.
-    n, lobes = 49, 11
+    n, lobes = 41, 11
     a0, a1 = math.radians(-58.0), math.radians(238.0)
     path, rad = [], []
     for i in range(n):
@@ -3788,19 +4116,26 @@ def build_muzzle_primate():
         px, py = out * MZ_RX * c, out * MZ_RY * s
         path.append(Vector((px, py, _mz_height(px, py) + 0.0008 * w)))
         rad.append(max(0.0008, w * (0.0055 + 0.003 * lobe)))
-    tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 7)
-    fur_mat = _fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
+    tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 6)
+    fur_mat = _mammal_fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
     fur = bc.mesh_object("FurFrame", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in tv], tf, [fur_mat], parent=face)
     fur_mat.name = "M_MuzzlePrimateFur"
     objs = [face, nose, holes, fur]
+    # The decimation keeps the default 0.8 mm tolerance over the face, but the snout (its profile is the point of
+    # revision 4) must stay within 0.45 mm. The nose pad (0.9 mm proud) and the thin dark decals (sockets, nostrils,
+    # mouth, 0.15 to 1.2 mm proud) are authored at their final density and not decimated: at 0.8 mm the pad fell to
+    # 8 triangles and the decals could sink under the skin.
+    snout_pts = [Vector(v) for v in verts if _mz_snout(v[0], v[1]) > 0.0005]
     baked = _bake(objs, "PartMuzzlePrimate", {"M_MuzzlePrimateSkin": sf.tint(_lin("#C49A86")), "M_MuzzlePrimateNose": sf.tint(_lin("#4A3532")),
-                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#6E5A48"))})
+                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#6E5A48"))},
+                  keep=("Nose", "Cavities"), accept={"MuzzlePrimate": _points_fit(snout_pts, 0.00045)})
     pts = _check_pivot("muzzle_primate", MUZZLE_SINK)
     foot = _footprint(pts)
 
     def snout(co):
-        # The whole squared block moves out together (a plateau mask), so it stays a block, not a cone.
-        k = _mz_muzzle(co.x, co.y + 0.002) if co.z > 0.0 else 0.0
+        # The whole snout moves out together (its own mask, flat across the nose and lips and fading over the
+        # bridge and under the chin), so it keeps its profile instead of turning into a cone.
+        k = _mz_snout_mask(co.x, co.y + 0.002) * _mz_smoothstep(0.006, -0.008, co.y) * (1.0 - _mz_smoothstep(-0.030, -0.042, co.y)) if co.z > 0.0 else 0.0
         co.z += 0.012 * k
         co.y -= 0.003 * k
         return co
@@ -3819,9 +4154,56 @@ def build_muzzle_primate():
     rules = _rules("muzzle_primate", round(foot + 0.001, 3), MUZZLE_SINK, "forward_cone", ["spine"], 30, 25, centerline="required")
     rules["handles"] = handles
     rules["pivot_note"] = "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow. The eye sockets at x = +-15.5 mm, y = +9 mm are open hollows for eye parts."
-    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short squared muzzle with a broad dark nose pad, nostrils and a mouth line, framed by locks of fur.",
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short snout with a primate's side profile (nose bridge, rounded nose tip, upper lip, mouth line, lower lip, small chin) and a squared front, a broad dark nose pad with nostrils, framed by locks of fur.",
             "category": "part", "part_type": "muzzle_primate", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 3, **baked}
+            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 4,
+            "review_notes": MUZZLE_PRIMATE_REVIEW, **baked}
+
+
+MUZZLE_PRIMATE_REVIEW = {
+    "revision": 4,
+    "cause": "Revision 3's snout was a superellipse plateau: a flat top 19 mm high from y -23 to -8 mm with steep steps "
+             "at both ends, and the brow ridge stood just as high (18.8 mm), so the Blender gray side view read as two "
+             "slabs with a slot between them. The nose pad was a flattened blob laid on the flat top. The first "
+             "revision 4 build also showed that the default 0.8 mm decimation cut a pad that follows a curved snout "
+             "down to 8 triangles.",
+    "change": "The snout is a side profile (MZ_PROFILE, a clamped cubic spline over the face plane): it rises from the "
+              "nose bridge between the eyes (y +2 mm, 7.8 mm high) to a rounded nose tip (y -14 mm, 20 mm), rolls over "
+              "the upper lip (y -20 mm, 18.7 mm) to a 1 mm crease at the mouth line, a small rolled lower lip, a "
+              "shallow groove and a chin pad, and recedes into the face by y -44 mm. Across x it is a narrow 7 mm "
+              "bridge widening to the squared 21.5 mm half width at the nose and lips, a little narrower at the chin, "
+              "with steep sides, so the front outline stays square. The brow is lower (10 mm, was 13.5 mm) and sits "
+              "under the nose tip. The nose pad is a leather oval (the leather pad material, roughness 0.4; through "
+              "the old helper-name collision it had been the glossy frog-disc material) laid over the nose tip along "
+              "the snout's curve, 0.9 mm proud with its rim tucked under; the nostrils are two tilted dark ovals on "
+              "it and the mouth line follows the crease. The eye hollows, nostrils and mouth line face out of the "
+              "face (+Z); they were wound inward and showed only because the materials are double-sided. The "
+              "decimation keeps the default 0.8 mm but holds the snout within 0.45 mm (_points_fit); the nose pad and "
+              "the dark decals are authored at their final density and not decimated. The fur ruff is resampled (41 "
+              "points, 6 sides; was 49 and 7) to stay in budget. H1_Snout moves the whole snout with the new snout "
+              "mask (12 mm out, 3 mm down); H2_Brow is unchanged. 1095 of 1200 triangles (was 1151); 0.09 x 0.103 x "
+              "0.029 m (was 0.089 x 0.102 x 0.03); footprint 0.056 m (was 0.055, from the resampled ruff); sink, "
+              "pivot, the eye sockets (x +-15.5 mm, y +9 mm, same depth), handle keys, sockets (none) and material "
+              "names unchanged.",
+    "gate1_shape": "pass: Blender gray front, side, three-quarter and low three-quarter with the plate stood up as on a "
+                   "head (tools/blender/render_part_review.py --stand): the side outline runs from the brow ridge down "
+                   "into a dip at the bridge, out along the snout to a rounded nose tip, over the upper lip into the "
+                   "mouth crease, and back past a small lower lip and chin into the face (before: a flat-topped block "
+                   "with a vertical front, as high as the brow, with a slot between). Front: a squared muzzle with an "
+                   "oval nose pad and a curved mouth line. H1_Snout at 1000 pushes the whole snout out keeping its "
+                   "profile; H2_Brow at 1000 makes the brow heavier. Remaining: in grazing light a few flat facets "
+                   "show on the snout's lower sides.",
+    "gate2_materials": "pass: Blender material front and three-quarter: a dark leather nose pad with two darker "
+                       "nostrils, pale pored skin, the dark mouth line and eye hollows, the brown fur ruff; in Godot the "
+                       "same pieces read apart.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot "
+                      "capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); captured front and side in Godot. On the monkey preset in "
+                   "the creature editor scene (tools/godot/part_on_body_shot.gd) it reads at the world's gameplay "
+                   "distance as the grey snout under the eyes, and close up the rounded snout with its oval nose pad "
+                   "replaces the box with a nose block. The preset places the plate low on the head facing forward and "
+                   "down, so in the editor the profile is seen mostly from below: placement, not the part.",
+}
 
 
 # --- Dragon set: wing, swept horn, dorsal spine ------------------------------------------------------
@@ -3950,26 +4332,31 @@ def build_wing_dragon():
 
     # H1_Fold, bat-style: every finger swings about the wrist to lie back down along the forearm, the four struts
     # converging into a tight bundle. Each finger turns rigidly inside a narrow band around it, and the membrane
-    # between two fingers takes up the squeeze by pleating out of the plane, alternately toward -X and +X.
-    fing = [math.degrees(math.atan2(t.z - wrist.z, t.y - wrist.y)) for t in tips]
+    # between two fingers takes up the squeeze by pleating out of the plane, alternately toward -X and +X. The
+    # arm and the inner panel's body edge stay where they are (only the fingers draw in toward the wrist), and the
+    # fold fades out over the 6 cm above the root, so the folded wing stays rooted in the skin
+    # (tests/test_creature_parts.gd test_every_handle_at_full_keeps_the_part_on_the_skin).
+    # Polar angles run 0..360 like theta in fold(): the last finger points back past 180 degrees.
+    fing = [math.degrees(math.atan2(t.z - wrist.z, t.y - wrist.y)) % 360.0 for t in tips]
     targets = [236.0, 244.0, 252.0, 260.0]
     band = 3.5
 
     def turn(theta):
-        """Degrees of rotation for a point at polar angle theta (degrees, about the wrist in YZ), and its pleat."""
+        """Degrees of rotation for a point at polar angle theta (degrees, about the wrist in YZ), its pleat, and how
+        far it lies from the last finger toward the arm (0 on the fingers, 1 on the arm)."""
         if theta < fing[0] - band:
             lo = fing[0] - band - 30.0
-            return (targets[0] - fing[0]) * max(0.0, (theta - lo) / 30.0), 0.0
+            return (targets[0] - fing[0]) * max(0.0, (theta - lo) / 30.0), 0.0, 0.0
         for i in range(4):
             if abs(theta - fing[i]) <= band:
-                return targets[i] - fing[i], 0.0
+                return targets[i] - fing[i], 0.0, 0.0
             if i < 3 and fing[i] + band < theta < fing[i + 1] - band:
                 u = (theta - fing[i] - band) / (fing[i + 1] - fing[i] - 2 * band)
                 r = (targets[i] - fing[i]) * (1 - u) + (targets[i + 1] - fing[i + 1]) * u
-                return r, (-1.0 if i % 2 == 0 else 1.0) * math.sin(math.pi * u)
+                return r, (-1.0 if i % 2 == 0 else 1.0) * math.sin(math.pi * u), 0.0
         arm = 277.0
         u = min(1.0, (theta - fing[3] - band) / (arm - fing[3] - band))
-        return (targets[3] - fing[3]) * (1 - u), -0.5 * math.sin(math.pi * u)
+        return (targets[3] - fing[3]) * (1 - u), -0.5 * math.sin(math.pi * u), u
 
     def fold(co):
         dy, dz = co.y - wrist.y, co.z - wrist.z
@@ -3978,10 +4365,10 @@ def build_wing_dragon():
             return co
         theta = math.degrees(math.atan2(dz, dy)) % 360.0
         w = min(1.0, max(0.0, (d - 0.02) / 0.04))
-        w = w * w * (3 - 2 * w)
-        rot, pleat = turn(theta)
+        w = w * w * (3 - 2 * w) * bc.smoothstep((co.z + DWING_SINK) / 0.06)
+        rot, pleat, arm_u = turn(theta)
         a = math.radians(theta + rot * w)
-        dd = d * (1.0 - 0.38 * w)
+        dd = d * (1.0 - 0.38 * w * (1.0 - arm_u))
         co.y, co.z = wrist.y + dd * math.cos(a), wrist.z + dd * math.sin(a)
         co.x += w * (0.09 * min(1.0, d / 0.3) * pleat - 0.015)
         return co
@@ -3999,7 +4386,32 @@ def build_wing_dragon():
     return {"purpose": "Creature wing part (PROPOSED): a big dragon wing, a thick knuckled arm, a hooked thumb claw, four stout finger struts and a deeply scalloped leathery membrane, right-hand piece (mirrored for the left).",
             "category": "part", "part_type": "wing_dragon", "convention": "creature_art_contract v1",
             "part_rules": rules, "paint_mix": {"M_WingDragonMembrane": 0.75, "M_WingDragonBone": 0.85, "M_WingDragonClaw": 0.0},
-            "revision": 1, **baked}
+            "revision": 2, "review_notes": WING_DRAGON_REVIEW, **baked}
+
+
+# Finish gates (docs/art/creature_parts_gates.md), kept here because the export rewrites the whole record.
+WING_DRAGON_REVIEW = {
+    "revision": 2,
+    "change": "H1_Fold keeps the root on the skin: the fold fades out over the 6 cm above the root, only the "
+              "fingers draw in toward the wrist (the arm and the inner panel's body edge stay), and the last "
+              "finger's polar angle is taken in 0..360 like the folded points' (it was -172 degrees, so finger 4 "
+              "and the panel between fingers 3 and 4 turned past their fold targets). Rest shape, H2_Flap, "
+              "materials and bake are unchanged from revision 1.",
+    "gate1_shape": "pass: gray side and 3/4 at H1_Fold 0, 500 and 1000 (Blender) and Godot front and side on a "
+                   "ground plane show the arm standing on the ground at every fold; the fingers bundle back down "
+                   "along the forearm with the membrane pleated between them; no tear or finger through the "
+                   "membrane. At 1000 the inner panel's body edge stays along the skin as a narrow sliver, as a "
+                   "bat's flank membrane does (PROPOSED). Folded GLB y min: bones -0.0238, membrane -0.0186; the "
+                   "sunk root vertices stay at or below -0.012.",
+    "gate2_materials": "pass (unchanged): membrane red-brown with fine raised veins, scaly green bone, cream claw "
+                       "read apart in the material close-up and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py) and the neutral "
+                      "Godot capture (tools/godot/capture_part.gd); judged without bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the dragon preset in the creature editor scene "
+                   "(tools/godot/part_on_body_shot.gd) at the world's gameplay distance and close, open and at "
+                   "H1_Fold 1000, the folded wings sit rooted on the back; tests/test_creature_parts.gd "
+                   "test_every_handle_at_full_keeps_the_part_on_the_skin passes for it.",
+}
 
 
 def build_horn_swept():
@@ -4105,87 +4517,146 @@ BULGE_R = 0.042
 BULGE_SINK = 0.025
 
 
-def _pad_material(name):
-    """The sticky toe discs: paler, glossier and finely pitted, so they read apart from the skin."""
+def _frog_disc_material(name):
+    """The sticky toe discs of the frog hand and foot: paler, glossier and finely pitted, so they read apart from
+    the skin."""
     sh = sf.Shader(name)
     pits = sh.remap(sh.voronoi(900.0, 0.8), 0.25, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pits), 0.2, 0.0003)
     return sh.out(_grey(sh, sh.math("SUBTRACT", 0.95, sh.math("MULTIPLY", pits, 0.15)), 0.8), 0.18)
 
 
+# The bulge eye's mound and lid profile, (height, radius) in ball radii, from under the skin up (revision 5). The
+# skirt below the skin tucks in and the widest ring sits at the skin line, so on a rounded head the mound curves
+# down into the skin instead of standing off it as a wall; it rises over a soft shoulder to `low`, then six lid
+# rows hug the ball up to a rounded lip, and a last row tucks the lip edge under the ball's surface, so there is
+# no gap and no back face to see between lid and ball.
+BULGE_MOUND = ((-0.567, 1.0), (-0.28, 1.36), (0.0, 1.55), (0.13, 1.49), (0.25, 1.37))
+BULGE_LID = ((0.34, 1.25), (0.42, 1.15), (0.49, 1.08), (0.555, 1.03), (0.605, 1.0))
+BULGE_LIP = (math.radians(113.0), 1.08)      # the lip's angle from the ball's top and distance from its centre
+BULGE_TUCK = (math.radians(109.0), 0.972)    # the lip's edge, inside the ball
+
+
 def build_eye_bulge():
     """A frog's eye: a big glossy ball, mostly bronze iris with a wide horizontal pupil, sitting high on a raised
     mound of wet skin that hugs its lower half. Placed on the side of the head (+Y to the head), the pupil's long
-    axis runs along Y, i.e. level. H1_Blink rolls the mound's lip up over the ball, H2_Bulge pushes the ball out."""
+    axis runs along Y, i.e. level. H1_Blink rolls the mound's lip up over the ball, H2_Bulge pushes the ball out.
+    Revision 5: the lid is the mound's own green (a lighter, flat lid band read as a pale cream ring round the
+    ball), its lip tucks under the ball, the skirt curves into the skin, and 32 segments round (24 showed
+    facets on the ball's outline up close)."""
     R = BULGE_R
     centre = Vector((0.0, 0.0, R * 1.05))
-    axis = Vector((0.0, 0.0, 1.0))
     sclera = _sclera_material("M_EyeBulgeBallProc")
-    # The iris runs down to 116 degrees, past the mound's lip (about 115), so no pale collar shows between them;
-    # the sclera below is tinted a dark olive so any sliver that peeks out reads as shadowed skin, not a washer.
+    # The iris runs down to 116 degrees, past the lid's tucked edge (109), so no sclera shows above the lid.
     iris_half = math.radians(116.0)
-    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, iris_half, math.radians(40.0), slit=0.15,
-                              slit_axis=(0.0, 1.0, 0.0))
-    ball = _eye_ball("EyeBulge", centre, R, iris_half, sclera, iris_mat, segs=24)
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, Vector((0.0, 0.0, 1.0)), iris_half, math.radians(40.0),
+                              slit=0.15, slit_axis=(0.0, 1.0, 0.0))
+    ball = _eye_ball("EyeBulge", centre, R, iris_half, sclera, iris_mat, segs=32, iris_rows=6, back_rows=2)
     sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
-    # The mound: a skirt flaring into the skin, rising only to a low lip well below the ball's equator, so the ball sits high and round on it.
-    prof = []
-    top = centre.z - 0.42 * R
-    low = centre.z - 0.8 * R
-    z0 = -(BULGE_SINK - 0.0012)
-    # Five rings up the skirt, then eight between `low` and the lip: the blink rolls those eight over the ball,
-    # and they need to be dense enough to close on a round dome rather than a faceted cone.
-    zs = [z0 + (low - z0) * i / 5 for i in range(5)] + [low + (top - low) * i / 8 for i in range(9)]
-    for z in zs:
-        if z <= 0.0:
-            r = R * 1.45 + 0.1 * R * (z + BULGE_SINK) / BULGE_SINK
-        else:
-            u = min(1.0, z / top)
-            r = max(R * 0.95, R * (1.55 - 0.6 * math.sin(u * math.pi / 2) ** 0.7))
-        prof.append((z, r))
-    lv, lf, lbands = bc.revolve(prof, 24)
+
+    def on_ball(th, rad):
+        return (centre.z / R + rad * math.cos(th), rad * math.sin(th))
+
+    rows = list(BULGE_MOUND) + list(BULGE_LID) + [on_ball(*BULGE_LIP), on_ball(*BULGE_TUCK)]
+    prof = [(z * R, r * R) for z, r in rows]
+    low = prof[len(BULGE_MOUND) - 1][0]
+    lip_z = prof[-2][0]
+    lid_z = [z for z, _ in prof[len(BULGE_MOUND) - 1:-1]]      # low, the lid rows, the lip
+    lv, lf, lbands = bc.revolve(prof, 32)
     # revolve winds its faces inward for a rising profile; the mound is an open skirt, so flip them by hand (an
     # inward mound lit its back face and showed a diagonal shading crease on the front).
     lf = [tuple(reversed(f)) for f in lf]
     mound_mat = _wet_skin_material("M_EyeBulgeMoundProc", scale=140.0)
-    # The rings the blink rolls over the ball (above `low`) take a plain wet-skin lid material with no mottle, so
-    # the UVs stretching as the lid closes have nothing to streak.
-    lid_mat = _wet_skin_material("M_EyeBulgeLidProc", scale=140.0, mottle=False)
-    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat, lid_mat], [1 if b >= 4 else 0 for b in lbands],
-                           parent=ball, fix_normals=False)
+    # The rows the blink rolls over the ball (above `low`) take a plain wet-skin lid material with no mottle, so
+    # the UVs stretching as the lid closes have nothing to streak. Same tint as the mound and a touch darker, so
+    # the lid reads as skin folding round the ball, not as a pale band.
+    lid_mat = _wet_skin_material("M_EyeBulgeLidProc", scale=140.0, mottle=False, flat="#B8B8B8")
+    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat, lid_mat],
+                           [1 if b >= len(BULGE_MOUND) - 1 else 0 for b in lbands], parent=ball, fix_normals=False)
     mound_mat.name, lid_mat.name = "M_EyeBulgeMound", "M_EyeBulgeLid"
     baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#4A4A2C")),
                   "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E")),
-                  "M_EyeBulgeLid": sf.tint(_lin("#79A458"))}, size=512)
+                  "M_EyeBulgeLid": sf.tint(_lin("#6E9A4E"))}, size=512)
     pts = _check_pivot("eye_bulge", BULGE_SINK)
     foot = _footprint(pts, z_max=0.02)
+    th_low = math.atan2(prof[len(BULGE_MOUND) - 1][1], low - centre.z)
+    n_lid = len(lid_z) - 1
 
     def blink(co):
+        """The closed lid: the rows above `low` spread evenly in angle from `low` to the pole, easing onto one
+        sphere just outside the ball, so the shut lid is a round dome. The lip stays a sub-millimetre ring (an exact
+        collapse to a point made duplicate vertices that crashed the glTF import) and the tucked edge closes just
+        under it, inside the dome."""
         if co.z <= low + 1e-6:
             return co
-        k = min(1.0, (co.z - low) / (top - low))
         d = co - centre
         phi = math.atan2(d.y, d.x)
-        th_low = math.atan2(math.hypot(d.x, d.y), low - centre.z)
-        # The rings spread evenly in angle from `low` to the pole, easing onto one sphere just outside the ball, so
-        # the closed lid is a round dome. The top ring stays a sub-millimetre ring (an exact collapse to a point made
-        # duplicate vertices that crashed the glTF import).
-        th = th_low * (1.0 - k) + 0.004 * k
-        s = bc.smoothstep(min(1.0, k * 2.0))
-        rad = d.length + (1.07 * R - d.length) * s
+        if co.z > lip_z + 1e-6:
+            th, rad = 0.002, 1.0 * R
+        else:
+            i = next(j for j in range(1, len(lid_z)) if co.z <= lid_z[j] + 1e-6)
+            k = (i - 1 + (co.z - lid_z[i - 1]) / max(1e-9, lid_z[i] - lid_z[i - 1])) / n_lid
+            th = th_low * (1.0 - k) + 0.004 * k
+            s = bc.smoothstep(min(1.0, k * 2.0))
+            rad = d.length + (1.07 * R - d.length) * s
         return centre + Vector((math.sin(th) * math.cos(phi), math.sin(th) * math.sin(phi), math.cos(th))) * rad
 
+    top = centre.z + R
+
     def bulge(co):
-        return Vector((co.x, co.y, co.z + 0.25 * R * max(0.0, co.z) / (R * 1.55)))
+        # Only the ball above the lip stretches out (its top rises a third of a radius, as before), so the ball
+        # never pulls away from the lid's tucked edge.
+        return Vector((co.x, co.y, co.z + 0.33 * R * max(0.0, co.z - lip_z) / (top - lip_z)))
 
     handles = _shape_keys(mound, [("H1_Blink", blink, "the mound's lip rolls up over the ball and shuts")])
     handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
     rules = _rules("eye_bulge", round(foot + 0.001, 3), BULGE_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
-    return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
+    return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin whose lid hugs the ball; blinks on a shape key.",
             "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9, "M_EyeBulgeLid": 0.9}, "revision": 4, **baked}
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9, "M_EyeBulgeLid": 0.9}, "revision": 5,
+            "review_notes": EYE_BULGE_REVIEW, **baked}
+
+
+# Finish gates (docs/art/creature_parts_gates.md), kept here because the export rewrites the whole record.
+EYE_BULGE_REVIEW = {
+    "revision": 5,
+    "cause": "The cream band was the lid band itself (M_EyeBulgeLid, the eight rows from `low` up to the lip): a "
+             "wide, near-flat ledge round the ball in a lighter tint (#79A458) with a flat 0.8 grey, so under the "
+             "editor's key light it read as a pale cream-green ring between the iris and the mound. Confirmed on "
+             "the hopper preset close up with tools/godot/part_on_body_shot.gd --mark (the lid painted red, the "
+             "mound blue). The back of the lip, seen through the 1.6 mm gap, showed as a dark ring in Blender but "
+             "not as the band.",
+    "change": "The lid takes the mound's tint (#6E9A4E) and a flat 0.72 grey, a little darker than the mound's mottle, "
+              "so it reads as skin folding round the ball. The profile is rebuilt: six lid rows hug the ball up to a "
+              "rounded lip at 1.08 ball radii, and a last row tucks the lip's edge inside the ball (0.972 radii), "
+              "so there is no gap and no back face to see. The skirt below the skin tucks in (1.0 radii at the "
+              "bottom) under a widest ring at the skin line, so on a rounded head the mound curves into the skin "
+              "instead of standing off it as a wall. 32 segments round the ball and mound (was 24) and six iris "
+              "rows (was four), so the outline is less faceted. H1_Blink closes the same dome (rows spread evenly "
+              "from `low` to the pole on 1.07 radii; the tucked edge closes under the lip inside the dome); "
+              "H2_Bulge now stretches only the ball above the lip (its top still rises a third of a radius), so it "
+              "never pulls away from the lid. 1152 of 1200 triangles (was 960); dimensions, footprint, sink, pivot, "
+              "handle keys, sockets (none), iris and materials' names unchanged.",
+    "gate1_shape": "pass: gray front, side and 3/4 (Blender) show the ball seated in one rounded mound, the lid "
+                   "hugging the ball to a rounded lip with no gap (before: a black ring between ball and lip), and "
+                   "the skirt tapering under the skin. Godot captures: H1_Blink 500 rolls a clean green lid over "
+                   "the lower ball, 1000 closes a round dome with no pinhole, H2_Bulge 1000 shows no gap at the "
+                   "lid. Remaining: the ball's top outline still shows mild facets close up (rows 19 degrees "
+                   "apart, was 29); one more row would go over the budget.",
+    "gate2_materials": "pass: glossy bronze iris with the slit pupil, the lid an even green band of the mound's "
+                       "colour (no pale ring), the mound mottled wet skin, in the Blender material views, the baked "
+                       "albedo and Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py) and the neutral "
+                      "Godot capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); on the hopper preset in the creature editor scene "
+                   "(tools/godot/part_on_body_shot.gd) in the editor view, at the world's gameplay distance and "
+                   "close, the pale ledge is gone and the mound's edge curves into the head in shadow; blinked shut "
+                   "it is a round green dome. The mound still stands off the hopper's narrow head as a rounded "
+                   "collar (scale 1300 on a strongly curved head), and parts keep their baked colours, so it is a "
+                   "lighter green than the hopper's body (paint_mix is not read by game code).",
+}
 
 
 HAND_FROG_T = tuple(i / 8 for i in range(9))
@@ -4212,7 +4683,7 @@ def _frog_s(co, f):
     return (co - HAND_FROG_BASE).dot(_frog_dir(f))
 
 
-def _smooth(x, a, b):
+def _frog_smooth(x, a, b):
     t = min(1.0, max(0.0, (x - a) / (b - a)))
     return t * t * (3.0 - 2.0 * t)
 
@@ -4225,7 +4696,7 @@ def _frog_bend(co, f, hinges):
     s = _frog_s(co, f)
     p = co.copy()
     for s_at, deg in reversed(hinges):
-        w = _smooth(s, s_at - 0.004, s_at + 0.004)
+        w = _frog_smooth(s, s_at - 0.004, s_at + 0.004)
         if w <= 0.0:
             continue
         pivot = HAND_FROG_BASE + d * s_at
@@ -4233,17 +4704,85 @@ def _frog_bend(co, f, hinges):
     return p
 
 
+# The frog hand's wrist and palm as one lofted surface (revision 3): rings across the limb axis (z, mm) with the
+# half width across x and the half depth along y (the palm side): a wrist that flares a little into the skin below
+# z 0, narrowing to 10 mm above it, then fanning out into a flat palm widest under the finger roots and rounding
+# over at the knuckles.
+FROG_PALM_RINGS = ((-24.0, 13.7, 13.7), (-12.0, 12.3, 12.3), (0.0, 10.9, 10.9), (6.0, 10.7, 9.8), (11.0, 12.2, 9.2),
+                   (16.0, 15.2, 8.8), (22.0, 19.6, 8.6), (30.0, 24.6, 8.5), (38.0, 26.6, 8.3), (44.0, 24.6, 7.7),
+                   (49.0, 18.4, 6.6), (52.0, 10.4, 4.6))
+
+
+def _frog_palm(sub=2, sides=28):
+    """(verts, faces) of the frog hand's wrist and palm (FROG_PALM_RINGS, Catmull-Rom with `sub` rings per span),
+    closed by a shrinking ring and a centre at both ends."""
+    n = len(FROG_PALM_RINGS)
+    rows = []
+    for i in range(n - 1):
+        p0, p1, p2, p3 = FROG_PALM_RINGS[max(i - 1, 0)], FROG_PALM_RINGS[i], FROG_PALM_RINGS[i + 1], FROG_PALM_RINGS[min(i + 2, n - 1)]
+        for k in range(sub):
+            t = k / sub
+            rows.append(tuple(0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t ** 3)
+                              for a, b, c, d in zip(p0, p1, p2, p3)))
+    rows.append(FROG_PALM_RINGS[-1])
+    rows = [(rows[0][0] - 0.6, rows[0][1] * 0.6, rows[0][2] * 0.6)] + rows + [(rows[-1][0] + 0.8, rows[-1][1] * 0.55, rows[-1][2] * 0.55)]
+    verts, faces = [], []
+    for z, w, d in rows:
+        for j in range(sides):
+            a = 2 * math.pi * j / sides
+            verts.append((w * math.cos(a) * 0.001, d * math.sin(a) * 0.001, z * 0.001))
+    for i in range(len(rows) - 1):
+        a0, b0 = i * sides, (i + 1) * sides
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a0 + j, a0 + k, b0 + k, b0 + j))
+    lo, hi = len(verts), len(verts) + 1
+    verts += [(0.0, 0.0, (rows[0][0] - 0.3) * 0.001), (0.0, 0.0, (rows[-1][0] + 0.5) * 0.001)]
+    last = (len(rows) - 1) * sides
+    for j in range(sides):
+        k = (j + 1) % sides
+        faces.append((lo, k, j))
+        faces.append((hi, last + j, last + k))
+    return verts, faces
+
+
+def _frog_hand_disc(c, side, d, r, segs=24, lats=7):
+    """A frog hand's sticky disc: a flattened superellipsoid round its thin axis (Y, the palm side), so seen
+    face-on its outline is a true circle of `segs` segments; flat-faced with a rounded rim."""
+    verts, faces = [], []
+    lift = Vector((0.0, 0.0012, 0.0))
+
+    def sp(c_, p):
+        return math.copysign(abs(c_) ** (2.0 / p), c_)
+    verts.append(tuple(c + lift + Vector((0.0, -0.36 * r, 0.0))))
+    for i in range(1, lats):
+        th = math.pi * i / lats
+        ct, st = sp(math.cos(th), 2.6), sp(math.sin(th), 2.6)
+        for j in range(segs):
+            ph = 2 * math.pi * j / segs
+            verts.append(tuple(c + lift + side * (r * st * math.cos(ph)) + d * (0.92 * r * st * math.sin(ph)) + Vector((0.0, -0.36 * r * ct, 0.0))))
+    verts.append(tuple(c + lift + Vector((0.0, 0.36 * r, 0.0))))
+    top = len(verts) - 1
+    for j in range(segs):
+        k = (j + 1) % segs
+        faces.append((0, 1 + j, 1 + k))
+        faces.append((top, 1 + (lats - 2) * segs + k, 1 + (lats - 2) * segs + j))
+    for i in range(lats - 2):
+        a0, b0 = 1 + i * segs, 1 + (i + 1) * segs
+        for j in range(segs):
+            k = (j + 1) % segs
+            faces.append((a0 + j, b0 + j, b0 + k, a0 + k))
+    return verts, faces
+
+
 def build_hand_frog():
     """A frog's hand on the end of the limb (+Z out along it, palm toward +Y): a flat rounded palm and four
     splayed tapering fingers with a knuckle joint each, ending in round flat sticky discs, faint webbing between
     the finger roots, smooth wet skin. H1_Grip curls the fingers at two joints (pads ride rigidly on the tips),
     H2_Spread fans them."""
-    unit, faces = bc.icosphere(3)
     verts, fcs = [], []
-    bc.append(verts, fcs, [tuple(Vector((n.x * 0.029, n.y * 0.0085, 0.03 + n.z * 0.022))) for n in (Vector(co).normalized() for co in unit)], faces)
-    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.012, 0.0, -0.012, -0.024)], lambda i, a: 0.0095 + 0.0014 * i, 14)
-    bc.append(verts, fcs, wv, wf)
-    disc_unit, disc_faces = bc.icosphere(2)
+    # The wrist and palm: one closed surface (revision 3; was a wrist cone stuck under an ellipsoid palm).
+    bc.append(verts, fcs, *_frog_palm())
     pv, pf = [], []
     roots = []
     for ang, length in HAND_FROG_FINGERS:
@@ -4251,18 +4790,24 @@ def build_hand_frog():
         start = HAND_FROG_BASE + d * HAND_FROG_ROOT
         path = [start + d * (length * t) for t in HAND_FROG_T]
         n = len(path) - 1
+        # The tip rounds off to a point inside the disc (revision 3): an open tube end showed as a dark hole
+        # when the grip curled the disc away from it.
+        path += [start + d * (length + 0.0018), start + d * (length + 0.003)]
 
         def rad(i, a, n=n):
+            if i > n:
+                return (0.0034, 0.0)[i - n - 1]
             t = i / n
             return 0.0084 - 0.0036 * t + 0.0016 * math.exp(-((t - 0.5) / 0.08) ** 2)
         tv, tf, _ = _tube(path, rad, 10)
         bc.append(verts, fcs, tv, tf)
         roots.append((start, d))
-        c = path[-1] + d * 0.0035
+        c = path[n] + d * 0.0035
         r = 0.0094
         side = Vector((d.z, 0.0, -d.x))
-        bc.append(pv, pf, [tuple(c + side * (q.x * r) + d * (q.z * r * 0.92) + Vector((0.0, q.y * r * 0.36 + 0.0012, 0.0))) for q in (Vector(co).normalized() for co in disc_unit)], disc_faces)
-    # Faint webbing: a thin double-sided sheet between neighbouring finger roots, its free edge scalloped.
+        bc.append(pv, pf, *_frog_hand_disc(c, side, d, r))
+    # Faint webbing: a thin slab between neighbouring finger roots, its free edge scalloped, closed by rim faces
+    # all round (revision 3; its two sheets were open at the free edge, which showed as a dark slit).
     for (pa, da), (pb, db) in zip(roots, roots[1:]):
         rows = 4
         base = len(verts)
@@ -4280,15 +4825,27 @@ def build_hand_frog():
                 i1 = i0 + 6
                 fcs.append((i0, i0 + 2, i1 + 2, i1))
                 fcs.append((i0 + 1, i1 + 1, i1 + 3, i0 + 3))
+        for j in range(rows):                       # the two ends, inside the finger roots
+            for k in (0, 2):
+                i0, i1 = base + j * 6 + k * 2, base + (j + 1) * 6 + k * 2
+                fcs.append((i0, i1, i1 + 1, i0 + 1) if k == 0 else (i0, i0 + 1, i1 + 1, i1))
+        for j, flip in ((0, False), (rows, True)):  # the root edge inside the palm, and the free edge
+            for k in range(2):
+                i0 = base + j * 6 + k * 2
+                q = (i0, i0 + 1, i0 + 3, i0 + 2)
+                fcs.append(q[::-1] if flip else q)
     skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0, rough=0.22)
     hand = bc.mesh_object("HandFrog", verts, fcs, [skin])
     skin.name = "M_HandFrogSkin"
-    pad_mat = _pad_material("M_HandFrogPadProc")
+    pad_mat = _frog_disc_material("M_HandFrogPadProc")
     pads = bc.mesh_object("Pads", pv, pf, [pad_mat], parent=hand)
     pad_mat.name = "M_HandFrogPad"
-    baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))})
+    baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))},
+                  keep=("Pads",))   # decimating the discs made their round outline an octagon
     pts = _check_pivot("hand_frog", 0.025)
-    foot = _footprint(pts, z_max=0.02)
+    # The footprint stays at revision 2's 0.027 m (the rules' placement spacing is kept): the new wrist measures
+    # less within 20 mm of the skin, because the palm now fans out above it instead of bulging down to it.
+    foot = max(_footprint(pts, z_max=0.02), 0.026)
 
     def grip(co):
         if co.z <= HAND_FROG_KNUCKLE - 0.008:
@@ -4301,7 +4858,9 @@ def build_hand_frog():
         if co.z <= HAND_FROG_KNUCKLE - 0.008:
             return co
         f = _frog_finger_of(co)
-        w = _smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008)
+        # Only what stands above the palm's sides fans out (revision 3): the palm's wide top corners, below
+        # z 44 mm, stay put (they used to swing out with the outer fingers as spikes).
+        w = _frog_smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008) * _frog_smooth(co.z, 0.044, 0.050)
         rot = Matrix.Rotation(math.radians(HAND_FROG_FINGERS[f][0] * 0.45) * w, 3, Vector((0.0, 1.0, 0.0)))
         return HAND_FROG_BASE + rot @ (co - HAND_FROG_BASE)
 
@@ -4310,9 +4869,47 @@ def build_hand_frog():
     _shape_keys(pads, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
     rules = _hand_rules("hand_frog", foot)
     rules["handles"] = handles
-    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a flat palm and four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
+    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a wrist flowing into a flat palm that fans out toward four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
             "category": "part", "part_type": "hand_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 2, **baked}
+            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 3,
+            "review_notes": HAND_FROG_REVIEW, **baked}
+
+
+HAND_FROG_REVIEW = {
+    "revision": 3,
+    "cause": "Real frames of revision 2 (Blender gray and material views at rest, H1_Grip 1000 and H2_Spread 1000; Godot "
+             "captures; the hopper preset) showed: a straight wrist cone stuck under an ellipsoid palm, meeting it in a "
+             "crease; the sticky discs, icospheres decimated at 0.8 mm, with octagonal outlines; at H1_Grip 1000 the "
+             "finger tubes' open ends showing as dark holes where the discs curl away from them; and at H2_Spread 1000 "
+             "the palm's wide top corners swinging out with the outer fingers as small spikes. The web, two open "
+             "sheets 2.4 mm apart, was also open along its free edge. Fingers did not pass through the palm and the "
+             "discs stayed on the tips.",
+    "change": "The wrist and palm are one closed loft (FROG_PALM_RINGS): a wrist that flares a little into the skin, "
+              "narrows to 10 mm above it and fans out into a flat palm widest under the finger roots, rounding over at "
+              "the knuckles. The discs are flattened superellipsoids round their thin axis (24 segments, flat faces, a "
+              "rounded rim), authored at final density and not decimated, so their outline is round. Each finger tip "
+              "rounds off to a point inside its disc. The web is a closed slab (rim faces all round). H2_Spread fans "
+              "only what stands above the palm's sides (z over 44 to 50 mm), so the palm's corners stay put; H1_Grip "
+              "is unchanged. The footprint stays at revision 2's 0.027 m (the new wrist measures less near the skin; "
+              "kept so the rules do not change). 1780 of 2500 triangles (was 732; the discs are 1152 of them); "
+              "dimensions (0.09 x 0.027 x 0.134 m), sink, pivot, handle keys, sockets (none) and materials unchanged.",
+    "gate1_shape": "pass: Blender gray front, side and three-quarter: the wrist flows into a fan-shaped palm with no "
+                   "crease, the discs are round, the fingers taper with their knuckle swellings (before: a cone under "
+                   "a round paddle, octagonal discs). H1_Grip 500 and 1000: the fingers curl into a fist with closed, "
+                   "rounded tips and the discs riding on them, nothing through the palm (before: dark open tube ends). "
+                   "H2_Spread 1000: the fingers fan wide and the palm's outline stays smooth (before: corner spikes). "
+                   "Remaining: the decimated fingers still show flat facets close up.",
+    "gate2_materials": "pass (unchanged): wet green skin and pale glossy discs read apart in the Blender material views "
+                       "and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot "
+                      "capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the Godot captures at rest, H1_Grip 1000 and H2_Spread 1000 "
+                   "match the Blender views. On the hopper preset (tools/godot/part_on_body_shot.gd, bare scene, side "
+                   "view) the hand hangs from the forelimb, seen edge-on, with the wrist flowing into the palm (before: "
+                   "a collar where the wrist met the palm). In the editor scene the hopper's hands, like its feet, sit "
+                   "under the floor pad, and at the world's gameplay distance they are small green ends of the "
+                   "forelimbs: placement, not the part.",
+}
 
 
 SAC_SINK = 0.02
@@ -4370,7 +4967,7 @@ def build_throat_sac():
 
 # --- Fur parts (mammal set): tufted clumps over a core, strand grain baked to the normal map -------
 
-def _fur_material(name, lo=0.55, along=(7.0, 7.0, 0.35), rough=0.88):
+def _mammal_fur_material(name, lo=0.55, along=(7.0, 7.0, 0.35), rough=0.88):
     """Matte fur: fine streaks stretched along the strands (the low-frequency axis of `along`), clumped breakup."""
     sh = sf.Shader(name)
     strands = sh.noise(260.0, 2.0, vector=mp._stretched(sh, along))
@@ -4444,9 +5041,9 @@ def build_ear_pointed():
         u = (k / 6.0) * 1.4 - 0.7
         p = Vector((u * 0.022, -0.012 + 0.006 * (1.0 - u * u), 0.002 + 0.004 * rnd.random()))
         _tuft(tv, tf, p, Vector((u * 0.5, 0.15, 1.0)).normalized(), 0.022 + 0.008 * rnd.random(), 0.0036, bend=Vector((0, 0.25, 0)), sides=6)
-    fur = _fur_material("M_EarFurProc", 0.5)
+    fur = _mammal_fur_material("M_EarFurProc", 0.5)
     skin = _skin_material("M_EarSkinProc", 260.0, 0.82, 0.6)
-    tuft = _fur_material("M_EarTuftProc", 0.7)
+    tuft = _mammal_fur_material("M_EarTuftProc", 0.7)
     ear = bc.mesh_object("EarPointed", verts, fcs, [fur, skin], mats, fix_normals=False)
     tufts = bc.mesh_object("Tufts", tv, tf, [tuft], parent=ear)
     fur.name, skin.name, tuft.name = "M_EarFur", "M_EarSkin", "M_EarTuft"
@@ -4514,8 +5111,8 @@ def build_tail_bushy():
         nb = len(fcs)
         _tuft(verts, fcs, base, d, length, max(0.006, _tail_r(t) * 0.42), bend=tan * 0.3)
         mats.extend([1 if t > 0.8 else 0] * (len(fcs) - nb))
-    fur = _fur_material("M_TailFurProc", 0.5, (6.0, 6.0, 0.4))
-    tipm = _fur_material("M_TailTipProc", 0.75, (6.0, 6.0, 0.4))
+    fur = _mammal_fur_material("M_TailFurProc", 0.5, (6.0, 6.0, 0.4))
+    tipm = _mammal_fur_material("M_TailTipProc", 0.75, (6.0, 6.0, 0.4))
     tail = bc.mesh_object("TailBushy", verts, fcs, [fur, tipm], mats)
     fur.name, tipm.name = "M_TailFur", "M_TailTip"
     baked = _bake([tail], "PartTailBushy", {"M_TailFur": sf.tint(_lin("#A8683A")), "M_TailTip": sf.tint(_lin("#EDE6DA"))}, tolerance=0.0006)
@@ -4571,8 +5168,8 @@ def build_mane():
             nb = len(fcs)
             _tuft(verts, fcs, base, d, length, 0.016 * size, bend=Vector((u * 0.4, -0.3, -0.7)))
             mats.extend([1 if (row + k) % 3 == 0 else 0] * (len(fcs) - nb))
-    pad = _fur_material("M_ManeFurProc", 0.45, (6.0, 0.4, 6.0))
-    lock = _fur_material("M_ManeLockProc", 0.62, (6.0, 0.4, 6.0))
+    pad = _mammal_fur_material("M_ManeFurProc", 0.45, (6.0, 0.4, 6.0))
+    lock = _mammal_fur_material("M_ManeLockProc", 0.62, (6.0, 0.4, 6.0))
     mane = bc.mesh_object("Mane", verts, fcs, [pad, lock], mats)
     pad.name, lock.name = "M_ManeFur", "M_ManeLock"
     baked = _bake([mane], "PartMane", {"M_ManeFur": sf.tint(_lin("#6B4A2E")), "M_ManeLock": sf.tint(_lin("#8E6640"))}, tolerance=0.0006)
@@ -4600,8 +5197,8 @@ def build_mane():
 
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 # --- Set 9 (2026-11-10): more faces --------------------------------------------------------------
-# Thirteen parts for the editor's thin categories (PROPOSED; owner direction 2026-11-10: "not a lot of options",
-# match Spore's creature creator): five mouths, three eyes, two weapons and three details. Mouths are authored for
+# Twelve parts for the editor's thin categories (PROPOSED; owner direction 2026-11-10: "not a lot of options",
+# match Spore's creature creator): four mouths, three eyes, two weapons and three details. Mouths are authored for
 # the forward-cone frame: +Z out of the snout, +Y the upper side, X across the face.
 
 def _round_end(t, t0):
@@ -4881,75 +5478,6 @@ def build_muzzle_grazer():
     return _mouth_record("muzzle_grazer", "Creature mouth part (PROPOSED): a grazer's long deep muzzle with a blunt squared end, two wide nostrils, soft lips and flat cropping teeth; the lower jaw opens on a shape key.",
                          rules, handles, "H1 is on Lower, H2 on MuzzleGrazer and Lower.",
                          {"M_MuzzleGrazerSkin": 0.85, "M_MuzzleGrazerGum": 0.0, "M_MuzzleGrazerTooth": 0.0, "M_MuzzleGrazerNostril": 0.0}, baked)
-
-
-# --- Hooked beak (mouth) --------------------------------------------------------------------------
-
-def build_beak_hooked():
-    """A raptor's beak: a deep keeled upper mandible arching forward and hooking down past a short scoop of a
-    lower one, dark at the tips, under a fleshy cere with two nostrils. H1_Open drops the lower mandible,
-    H2_Hook curls the hook further down."""
-    L, hinge, sink = 0.13, 0.008, 0.02
-    steps, sides = 18, 20
-    ts = [i / steps for i in range(steps + 1)]
-    path = [Vector((0.0, 0.017 - 0.004 * t - 0.062 * t ** 3.4, hinge + (L - hinge) * math.sin(t * 1.75) / math.sin(1.75))) for t in ts]
-
-    def radius_at(i, a):
-        if i == steps:
-            return 0.0
-        t = ts[i]
-        c, s = math.cos(a), math.sin(a)
-        # The ring's cos axis starts on +Y and is carried along the path; the under side is flattened, the top keeled.
-        h = (0.021 * (1.0 - t) ** 0.75 + 0.0012) * (0.45 if c < 0 else 1.0)
-        return _superellipse(c, s, h, 0.03 * (1.0 - t) ** 0.8 + 0.001, 1.7 if c > 0 else 2.0)
-
-    verts, fcs, ring = _tube(path, radius_at, sides)
-    mi = [1 if i >= int(steps * 0.6) else 0 for i in ring]
-    cv, cf = _collar(0.01, 0.034, 0.033, sink, top=0.014)
-    bc.append(verts, fcs, cv, cf)
-    mi += [2] * len(cf)
-    sv, sf_ = _blob(Vector((0.0, 0.03, 0.02)), 0.027, 0.014, 0.02, sub=2)
-    bc.append(verts, fcs, sv, sf_)
-    mi += [2] * len(sf_)
-    for side in (1.0, -1.0):
-        nv, nf = _blob(Vector((side * 0.014, 0.038, 0.03)), 0.0045, 0.003, 0.006, sub=1)
-        bc.append(verts, fcs, nv, nf)
-        mi += [1] * len(nf)
-    mats = [_horn_material("M_BeakHookedProc", 0.0, 0.8), _horn_material("M_BeakHookedTipProc", 0.0, 0.7), _skin_material("M_BeakHookedCereProc", 300.0, 0.8, 0.6, 0.2)]
-    upper = bc.mesh_object("BeakHooked", verts, fcs, mats, mi)
-    lsteps = 10
-    LL = L * 0.62
-    lpath = [Vector((0.0, -0.002 - 0.0055 * (1.0 - t) + 0.006 * t * t, hinge + (LL - hinge) * t)) for t in (i / lsteps for i in range(lsteps + 1))]
-
-    def lradius(i, a):
-        if i == lsteps:
-            return 0.0
-        t = i / lsteps
-        c, s = math.cos(a), math.sin(a)
-        h = (0.012 * (1.0 - t) ** 0.7 + 0.001) * (0.45 if c > 0 else 1.0)
-        return _superellipse(c, s, h, 0.024 * (1.0 - t) ** 0.75 + 0.001, 2.0)
-
-    lv, lf, lring = _tube(lpath, lradius, sides)
-    lower = bc.mesh_object("Lower", lv, lf, mats[:2], [1 if i >= int(lsteps * 0.65) else 0 for i in lring], parent=upper)
-    _named(mats, "M_BeakHooked", "M_BeakHookedTip", "M_BeakHookedCere")
-    baked = _bake([upper, lower], "PartBeakHooked", {"M_BeakHooked": sf.tint(_lin("#E0AE3A")), "M_BeakHookedTip": sf.tint(_lin("#3A302A")),
-                                                     "M_BeakHookedCere": sf.tint(_lin("#D9B070"))})
-    pts = _check_pivot("beak_hooked", sink)
-    foot = _footprint(pts)
-
-    def hook(co):
-        k = max(0.0, (co.z - 0.07) / 0.06)
-        if k > 0.0 and co.y < 0.03:
-            co.y -= 0.022 * k * k
-            co.z -= 0.012 * k * k
-        return co
-
-    handles = _shape_keys(lower, [("H1_Open", _hinge_fn(hinge, 30.0), "the lower mandible drops 30 degrees about the hinge")])
-    handles += _shape_keys(upper, [("H2_Hook", hook, "the hook curls further down and back")])
-    rules = _rules("beak_hooked", round(foot + 0.001, 3), sink, "forward_cone", ["spine"], 40, 30, centerline="required")
-    return _mouth_record("beak_hooked", "Creature mouth part (PROPOSED): a raptor's deep keeled beak hooking down past a short lower mandible, dark at the tips, under a fleshy cere with two nostrils; opens on a shape key.",
-                         rules, handles, "H1 is on Lower, H2 on BeakHooked.",
-                         {"M_BeakHooked": 0.15, "M_BeakHookedTip": 0.0, "M_BeakHookedCere": 0.7}, baked)
 
 
 # --- Grin (mouth) ---------------------------------------------------------------------------------
@@ -5542,7 +6070,6 @@ ASSETS = {
     "cpart_mane": (build_mane, 2500),
     "cpart_muzzle_fang": (build_muzzle_fang, 2500),
     "cpart_muzzle_grazer": (build_muzzle_grazer, 1200),
-    "cpart_beak_hooked": (build_beak_hooked, 1200),
     "cpart_mouth_grin": (build_mouth_grin, 2500),
     "cpart_mouth_tendrils": (build_mouth_tendrils, 2500),
     "cpart_eye_goat": (build_eye_goat, 1200),
@@ -5556,7 +6083,25 @@ ASSETS = {
 }
 
 
+def _check_unique_names():
+    """Module-level names must be unique: Python binds a global at call time, so a second `def` of the same name
+    silently replaces the first for every builder (a merge once gave the muzzle the frog hand's `_smooth` with its
+    arguments in another order, and the muzzle's nose the frog's toe-disc material). Prefix helpers with their
+    builder's name instead."""
+    import ast
+    seen, dups = {}, []
+    for node in ast.parse(open(__file__, encoding="utf-8").read()).body:
+        names = [node.name] if isinstance(node, (ast.FunctionDef, ast.ClassDef)) else \
+            [t.id for t in getattr(node, "targets", []) if isinstance(t, ast.Name)]
+        for name in names:
+            if name in seen:
+                dups.append(f"{name} (lines {seen[name]} and {node.lineno})")
+            seen.setdefault(name, node.lineno)
+    mp._check(not dups, "module-level names defined twice: " + ", ".join(dups))
+
+
 def main():
+    _check_unique_names()
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Build the creature parts.")
     parser.add_argument("--only", default="", help="comma-separated asset ids (default: all)")

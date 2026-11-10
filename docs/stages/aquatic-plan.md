@@ -1,6 +1,7 @@
 # Aquatic stage plan
 
-Status: **PROPOSED** unless a line says otherwise. The slice in section 8 is **IMPLEMENTED** (2026-10-25, tests and smoke below); its tuning stays PROPOSED. The owner approved building the Aquatic stage and its first
+Status: **PROPOSED** unless a line says otherwise. The slice in section 8 is **IMPLEMENTED** (2026-10-25, tests and smoke below); its tuning stays PROPOSED.
+Round 2 (aquatic-r2, section 8b) is IMPLEMENTED as listed there; its tuning, names and looks stay PROPOSED. The owner approved building the Aquatic stage and its first
 playable slice on 2026-10-25 (CONFIRMED: "Go for it"); every number, name and part list below is still PROPOSED
 until playtested and recorded in [DECISIONS.md](../DECISIONS.md). The [GENESIS Bible](../bible/GENESIS_Master_Developer_Bible_v0.1.pdf)
 is binding: §4 (era table and transition contract), §6 (Aquatic), §7 (shore link to Terrestrial), §12 (anatomy),
@@ -61,10 +62,15 @@ gradually: the slope gets steeper with distance, so a new player meets the deep 
 
 | Zone | Depth | What lives there | Food | Danger |
 |---|---|---|---|---|
-| Sunlit shallows | 0 to 12 m | Your nest and kin, the shore | Plankton clouds (scaled-up microscopic life) | None |
-| Reef | 12 to 30 m | Reef grazers (can be befriended), shelters | Algae patches | Low |
-| Twilight drop | 30 to 60 m | Silver shoal (prey), the lancer predator | Shoal fish (meat) | The lancer |
-| Deep | 60 m and below | The abyssal drifter's path, vents | Vent grazing (rich) | Pressure, the drifter |
+| Sunlit shallows | 0 to 12 m | Your nest and kin, the shore, glass minnows (prey) | Plankton clouds (scaled-up microscopic life), the nest-side algae bed, minnows (meat) | None |
+| Reef | 12 to 30 m | Reef grazers (can be befriended), reef cleaners (can be befriended; their station heals), the two reef arches | Algae patches | Low |
+| Twilight drop | 30 to 60 m | Silver shoal (prey), the lancer predator; the ledge cave and the pillar ring (shelters) | Shoal fish (meat), the krill swarm (filter food, inside the lancer's patrol) | The lancer |
+| Deep | 60 m and below | The abyssal drifter's path, the vents and the vent chimney (a shelter), vent glowfins (prey a lure draws in) | Vent grazing (rich), the fallen giant's carcass (meat) | Pressure, the drifter |
+
+aquatic-r2 added the minnows, cleaners and glowfins, the pillar ring and the vent chimney, and the nest-side algae
+bed, the krill swarm and the fallen giant (the content is IMPLEMENTED and tested; every number and name is
+PROPOSED, in `game/data/aquatic/aquatic_rules.json`). Every shelter and feeding site names its zone in the rules, and
+`test_every_site_sits_in_the_water_and_its_zone` checks it.
 
 The cell stage stays in history and in the water: plankton clouds are drawn with the cell stage's plankton and
 algae art at the new scale, and the species the lineage met as a cell are named on the entry card.
@@ -79,13 +85,31 @@ Swim rules (one rule set for play, the editor preview and the bots; Bible §12):
 
 | Part | What it changes | What it costs |
 |---|---|---|
-| Tail (fluke or ribbon, size 1 to 3) | Thrust, top speed, burst | Energy per second at thrust; a big tail widens the turn |
+| Tail (fluke, ribbon, lunate, paddle or whip, size 1 to 3) | Thrust, top speed, burst | Energy per second at thrust; a big tail widens the turn; each kind trades these differently (below) |
 | Pectoral fins (size 0 to 3) | Turn rate at low speed, depth trim (rise and dive control), hovering | Drag (lower top speed) |
 | Dorsal fin (size 0 to 2) | Stability: less drift in currents, steadier turns | Drag |
 | Body (length and girth) | Long: top speed, cruise efficiency. Deep: hit points, rated depth | Long: turn radius. Deep: drag and mass |
 | Swim bladder (0 to 3) | Holds depth with no effort; neutral bodies hover | Above 0 it rises when idle in the shallows and slows dives |
 | Senses (eyes, barbels or lure) | Sight range; barbels sense prey in dark water; a lure draws prey in the deep | Energy upkeep |
 | Mouth (inherited) | Diet: filter (plankton and algae), jaw (meat), or both | Fixed by lineage in the slice |
+
+Tail kinds (aquatic-r2; the tuning is PROPOSED, the rules and their test are IMPLEMENTED). Each kind reads its own
+row of thrust, turn penalty, drag, burst share and swim cost in `game/data/aquatic/aquatic_rules.json`, and
+`tests/test_aquatic_sim.gd` checks that on the darter, the hoverer and a middle body, at every tail size, no kind is
+at least as good as another on top speed, a one-second burst dash swum in the sim, yaw at 4 m/s and swim cost, and
+better on one (Bible §2: a single part must not solve every problem). They are drawn with recorded creature parts and
+their handles (no fish-only part yet). Measured in Godot on the darter (tail size 3) and the hoverer (size 1):
+
+| Tail | Role | Darter: top / burst / turn radius / swim cost | Hoverer: top / burst / turn radius / swim cost |
+|---|---|---|---|
+| Fluke | All-rounder | 8.7 m/s / 15.7 / 10.2 m / 1.65 per s | 3.2 / 5.8 / 1.0 / 0.55 |
+| Ribbon | Strong at small sizes, nimble, costly | 7.4 / 12.1 / 7.0 / 2.06 | 4.3 / 7.0 / 1.4 / 0.69 |
+| Lunate | Cruiser: the top speed at strength 2 and 3, cheap, slow to start, wide turns | 10.8 / 13.7 / 19.9 / 1.32 | 3.7 / 4.6 / 1.3 / 0.44 |
+| Paddle | Sprinter: the best burst and tight turns, draggy and costly | 7.9 / 21.3 / 7.1 / 2.23 | 3.8 / 10.3 / 1.2 / 0.74 |
+| Whip | Thrifty: cheapest and tightest turns, slow | 5.9 / 8.0 / 4.5 / 0.91 | 3.0 / 4.0 / 0.9 / 0.30 |
+
+The ribbon was retuned (thrust 6.4 + 1.3 per size, was 7.0 + 2.2) because it out-thrust the fluke at every size for
+the same cost; that moves the hoverer from 5.2 to 4.3 m/s and its turn from 1.7 to 1.4 m (PROPOSED).
 
 Rated depth: each body has a depth it can stand (body girth and bladder raise it). Below it, the pressure hazard
 runs: a 4-second warning (creaking sound, the depth gauge turns striped amber, "Pressure: rise" text) and only then a
@@ -109,8 +133,30 @@ colour becomes the fish's skin colour. The entry card shows each conversion so n
   can be met again.
 - **Abyssal drifter**: a huge animal on a fixed slow loop through the deep. It is scenery unless you are in its path;
   then a shadow and a deep tone warn you 3 seconds before its sweep, which hurts a lot but does not kill a healthy
-  fish outright.
+  fish outright. A fish inside a shelter still hears the warning but is not swept (aquatic-r2): the vent chimney
+  stands under its loop for that.
+- **Glass minnows** (aquatic-r2): a small school in the shallows near the nest that always flees a fish. They are a
+  jaw lineage's first meat (the shallows' plankton and algae feed only a filter mouth) and come back 30 s after a
+  catch.
+- **Reef cleaners** (aquatic-r2): live at the east reef arch. Two spaced calls befriend them; a friend that rests
+  (swims slower than 0.6 m/s) at their station is tended: they gather round it and it heals 4 health a second, with
+  one "cleaned" line a visit. A bite makes them foes and the station closes to you.
+- **Vent glowfins** (aquatic-r2): deep prey round the vents that flee any fish, glowing cyan. A fish with the lure
+  sense draws them in to its head from 12 m while it stays within 20 m of their home, so a deep-rated lure angler
+  with a jaw can catch them (the lure sense's use).
+- **Shelters**: the two reef arches, the ledge cave (a giant ciliate's split casing lying on the ledge, its mouth up
+  the slope), the pillar ring (a ring of glass drums round an open nave, inside the lancer's territory) and the vent
+  chimney (a glass-sponge basket on its drum, under the drifter's loop). The new looks are recorded cell-world GLBs
+  at the fish's scale; the fallen giant is a dead fish of the drifter's kind drawn with the fish skin.
 - Food regrows on each site's own timer (Bible §13: no endless free food, no empty world).
+
+The species are data (aquatic-r2, IMPLEMENTED; the values are PROPOSED tuning). `species_order` and each species'
+entry in `game/data/aquatic/aquatic_rules.json` (its home, whether it flees always or only as a foe, the lancer reach
+it hides at, the spaced calls that befriend it, how far it follows a friend, how near it warns of the lancer, its meal
+and respawn time, its names) drive one shared set of rules in `AquaticSim`; the HUD names each species from its event,
+so a new species needs no code. A scripted 80 s run recorded on the hard-wired grazer and shoal code before the change
+(`test_the_slice_species_play_as_recorded`) shows the grazers and the shoal play exactly as before, and
+`test_species_logic_is_data_driven` adds two made-up species through the rules alone.
 
 ## 6. Mating and the editor
 
@@ -124,6 +170,53 @@ turns on a plinth on the right; a stats panel shows top speed, burst, turn, dept
 as before and after bars. Done commits the new generation (generation + 1, the parent recorded) and spends the
 points; Cancel keeps the parent. The world keeps everything else: the friends, the fed sites, the drifter's place.
 
+Round 2 (aquatic-r2; the wording and courses are PROPOSED, the build is IMPLEMENTED): the tail row names each kind,
+with its tradeoff as a caption and as each button's tooltip, and the stats add pick-up and swim cost. The **test
+swim** (Spore's test drive, the Bible §12 test space) is `AquaticSim.trial()`: the parent and the offspring swim fixed
+courses in the same sim, on an emptied copy of the route, and the editor shows the metres of a 1 s burst dash and a
+10 s cruise, that cruise's energy and the degrees turned in the first second of a hard turn after 3 s of full thrust,
+beside a top-down drawing of both turn courses. `tests/test_aquatic_sim.gd` checks that a hand run in the full world
+covers the same metres, that a long burst and a long cruise reach the speeds the stats show, and that each tail wins
+the course its role names. Measured in Godot on the darter at tail strength 3:
+
+| Tail | Dash, 1 s | Cruise, 10 s | Turn in 1 s at speed | Energy, 10 s |
+|---|---|---|---|---|
+| Fluke | 5.0 m | 76.6 m | 51° | 24.6 |
+| Ribbon | 3.8 m | 65.2 m | 63° | 28.7 |
+| Lunate | 3.6 m | 91.7 m | 34° | 21.3 |
+| Paddle | 7.6 m | 70.5 m | 64° | 30.4 |
+| Whip | 2.5 m | 51.8 m | 77° | 17.2 |
+
+The fish turns on the stage's own **reef-stone plinth** (aquatic-r2; the look is PROPOSED, the swap is IMPLEMENTED):
+`aquatic_plinth`, a unit-radius slab of reef stone with a sand-dusted top and lilac polyps and two small amber sponges on
+its rim, from `tools/blender/make_aquatic_world.py`, scaled uniformly by the editor. It replaces the creature editor's
+pad (`creature_editor_room`), which the creature stage is rebuilding with walls; `tests/test_aquatic_assets.gd` checks
+the swap and the pad's contract.
+
+### The spawning nest (aquatic-r2)
+
+The nest is the stage's home landmark (Bible §6: "nests or spawning sites create recognizable locations"), its own
+Blender asset `aquatic_nest` (the look is PROPOSED; the placement and the rules are IMPLEMENTED and tested): a raised
+mound of shell gravel with a scooped dish, a ring of rounded reef stones crusted with lilac coral polyps, six clutches
+of cream cartilage egg capsules ("mermaid's purses", the aquatic era's cartilage and scale), and a **beacon**, a
+stacked reef-stone pillar with amber ribbon fronds on the front-left rim, about 5.5 m tall, so the nest reads from the
+spawn's first frame and from about 25 m away. It replaces the creature stage's nest ring.
+
+- **On the slope.** The floor rises 0.2 m a metre at the nest, so `game/scenes/aquatic/aquatic_world.gd` tilts the nest to the slope at
+  its site and sinks it 0.1 m; its foot meets the drawn sea floor all round (within 0.2 m; the floor's own relief
+  there is within 0.11 m of the profile), its skirt runs under the floor, and the beacon is stood upright on its
+  foot. The PR #192 nest ring sat flat on the slope, half floating and half buried.
+- **A clutch per generation.** One clutch shows for the first fish and one more for each generation born this stage
+  (the sim's history, at most six), read from the saved history: no save field is added.
+- **Resting heals** (PROPOSED tuning: 3 health a second, below 0.6 m/s, within the nest's 5 m): the nest is home, as
+  in Spore. The HUD says "Rest at the nest to heal" to a hurt fish there and "Resting at the nest: you heal" while it
+  heals. Rules without `rest_heal_per_s` (PR #192's slice) never heal there.
+
+Checked by `tests/test_aquatic_assets.gd` (the footprint, the spawn's clearance, the fit to the drawn sea floor, the
+upright beacon, six clutches), `tests/test_aquatic_sim.gd` (`test_resting_at_the_nest_heals`) and the aquatic smoke
+(the nest drawn, one clutch then two after the commit and the reload, a rest that heals and its HUD line, the
+plinth). The finish gates for both assets are in `docs/evidence/credit-aquatic-r2/aquatic_asset_gates.md`.
+
 ## 7. Exit to land (Bible §7)
 
 The shore at the near end of the shallows is the transition point. Going ashore needs a body that can crawl (limbs,
@@ -131,6 +224,44 @@ which the Aquatic editor offers later as lobe fins) and is always a choice: the 
 the body qualifies. Accepting saves a checkpoint, keeps the water reachable from the land, and opens the creature
 stage with the same lineage. The land transition itself belongs to the cell-to-creature work in the "Spore-style
 evolution game" thread; Aquatic hands it the lineage, it does not build its own land.
+
+Built (2026-11-10, awaiting the owner's review): lobe fins are a body step in the fin editor (0 to 2; each step costs
+points, mass and drag, so a crawler swims slower). At `crawl_limbs` the shore offers "Crawl onto land" or "Stay in
+the sea"; without them it says what is missing. Crawling saves, keeps the sea as the `.pre-terrestrial` checkpoint
+(EraTransition) and opens the creature stage with the fish's colour, tail fin and side fins as its first land body.
+`tests/test_continuity.gd` and `tests/smoke/continuity_smoke.gd` follow one save from the pool to the sea to the land
+and back again.
+
+## 7a. Staying in the sea: the aquatic path (direction CONFIRMED 2026-10-25; design PROPOSED)
+
+Joshua, 2026-10-25 05:25: a lineage that stays in the water should be a real path through the later eras (underwater
+Social, Tribal and city life), because players asked for it (community-wants theme 12, "stay aquatic", and the cut
+features list's underwater cities). The Bible allows it within bounds (§4): "Never force a land-adapted build onto a
+fully aquatic lineage", "allow continued aquatic play within supported scope", but "alternative paths require bounded
+content plans; seven eras do not authorize seven full campaigns per body plan". So the later underwater eras are a
+**later milestone** with their own bounded plan; nothing past Aquatic is built now. What Aquatic does now is make the
+choice real and recorded, so those eras can read it:
+
+- **No dead end.** The shore is always optional. A fish with crawling limbs can decline it and keep evolving in the
+  sea; the stage keeps working (feeding, mating, the editor, friends) for as long as the player stays.
+- **The choice is a lineage fact.** When a crawl-capable lineage declines the shore, or is past the point where it
+  could go ashore and keeps swimming, the save records a `lineage_history` event `"stayed_in_the_sea"` (an event
+  string in an existing list: no schema change). Going ashore records `"came_ashore"`, as the cell-to-creature link
+  already does. The save's `aquatic` block (v5) keeps the fish, its friends and its finds either way.
+- **What later eras read.** The last of those two events decides which path a lineage is on. An aquatic lineage's
+  Social era would be pods and shoals (calls, schooling, shared nests); Tribal, reef or vent villages built from
+  coral, shell and stone; Civilization, underwater cities with their own resources (currents, vents, light). Each is
+  a bounded plan for its own milestone, sized like the land path's era, not a second full campaign.
+- **Both paths stay connected.** Land lineages keep river and shore access (Bible §7: water remains useful); sea
+  lineages meet land species at the shore. Relations with species carry across (§4 continuity).
+- **Traits matter both ways** (Joshua, 2026-10-25 05:43). Lobe fins (legs-to-be) cost swim speed in the sea; a fish
+  that crawls ashore keeps its tail fin and side fins as creature parts, which the creature stage weighs as a land
+  speed cost until the player trades them away in its editor. Going ashore is not a one-way trap: a land lineage
+  can return to the sea later by building a submarine to reach the bubble cities (aquatic-path addendum), so
+  nothing here ties the sea to a body plan.
+- **Owner gate.** Building any underwater era past Aquatic changes milestone scope, so it waits for Joshua's go on its
+  bounded plan (backlog U-01 to U-04, after the vertical slice; DECISIONS.md "A fully aquatic lineage can stay
+  underwater through later eras").
 
 ## 8. First playable slice (step 2)
 
@@ -166,7 +297,7 @@ Architecture (CLAUDE.md layout):
 
 The fish's body is drawn with the creature stage's generated skin (`SpineRig`, owner-approved runtime skins) and
 its Blender-authored parts (tail fluke, fins, eyes, mouth). Props reuse recorded Blender assets (rocks, the arch,
-the nest ring, plankton, algae).
+plankton, algae); aquatic-r2 gives the stage its own nest and editor plinth (section 6).
 
 File boundaries: the cell stage (`game/scenes/pool`, `game/systems/pool_sim.gd`) and the creature stage
 (`game/**/creature/**`, the creature editor) are read, never edited, here. `game/scenes/main.gd` and the start screen get only
@@ -181,10 +312,52 @@ the entry hook. The cpart art belongs to the art thread; the slice uses parts al
 | Reading the cell lineage (read-only) | `game/systems/aquatic/aquatic_lineage.gd` | `tests/smoke/aquatic_smoke.gd` |
 | World view, HUD, editor, stage root | `game/scenes/aquatic/`, `game/ui/aquatic_hud.gd`, `game/ui/aquatic_editor.gd` | `tests/smoke/aquatic_smoke.gd` (in `tools/check.sh`) |
 | Sea floor (Blender, record, baked tiles) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_seafloor.json` | `tests/test_assets.gd` |
+| aquatic-r2: the nest and the editor plinth (Blender, records, baked textures) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_nest.json`, `assets/records/aquatic_plinth.json` | `tests/test_assets.gd`, `tests/test_aquatic_assets.gd` |
 
 Measured on the shared rules: the darter tops 8.7 m/s and turns on a 10 m radius at speed, stands 36 m; the hoverer
-tops 5.2 m/s, turns on 1.7 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns
+tops 4.3 m/s (5.2 before the aquatic-r2 ribbon retune), turns on 1.4 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns
 it and the hoverer must hide in an arch or burst.
+
+## 8b. Round 2 (aquatic-r2)
+
+The owner's request (CONFIRMED, 2026-10-25): extend the slice with more species niches, shelters and feeding grounds,
+a nest landmark, and fin and tail editor parts with real swim tradeoffs; keep PR #192's v5 `aquatic` save block
+working and do not change the schema further. A piece below is IMPLEMENTED where the named test or smoke check
+verifies it; every number, name and look in it is PROPOSED tuning. Test names are in `tests/test_aquatic_sim.gd`
+unless a file is named; "the smoke" is `tests/smoke/aquatic_smoke.gd` (in `tools/check.sh`).
+
+| Piece | Where | Checked by |
+|---|---|---|
+| Five tails (fluke, ribbon, lunate, paddle, whip), each with its own thrust, turn penalty, drag, burst share and swim cost; the ribbon retune (section 4) | `game/data/aquatic/aquatic_rules.json`, `game/domain/aquatic/aquatic_body.gd` | `test_no_tail_part_beats_another_on_every_count`, `test_each_tail_wins_its_own_course` |
+| The tails and the fin steps drawn with recorded creature parts and their handles; the back fin upright; the spine plate shown when the back fin stings | `game/domain/aquatic/aquatic_body.gd` | `test_fish_part_handles_keep_their_meaning`, `test_fish_bodies_are_legal_creature_descriptions` |
+| The editor's tail roles, the pick-up and swim cost rows, and the test swim from the same sim (section 6) | `game/systems/aquatic/aquatic_sim.gd` (`trial`), `game/ui/aquatic_editor.gd` | `test_the_editor_preview_and_the_water_agree`; the smoke (a lunate swap costs 4 and its test swim is the sim's) |
+| Species as data, played by one shared set of rules (section 5) | `game/data/aquatic/aquatic_rules.json`, `game/systems/aquatic/aquatic_sim.gd`, `game/ui/aquatic_hud.gd` | `test_the_slice_species_play_as_recorded` (recorded on the hard-wired code), `test_species_logic_is_data_driven` |
+| Glass minnows; reef cleaners and their healing station; vent glowfins drawn in by a lure | the rules, the sim, `game/scenes/aquatic/fish_view.gd`, the HUD | `test_minnows_feed_a_jaw_lineage_in_the_shallows`, `test_cleaners_befriend_and_heal_a_resting_friend`, `test_a_lure_draws_glowfins_and_eyes_do_not`, `test_every_species_is_drawn_and_none_crowds_the_spawn`; the smoke (all drawn, a minnow caught and eaten) |
+| The pillar ring and the vent chimney; a shelter also hides a fish from the drifter's sweep | the rules, the sim, `game/scenes/aquatic/aquatic_world.gd` | `test_the_pillar_ring_ends_a_lancer_pursuit`, `test_the_vent_chimney_hides_a_fish_from_the_drifter_sweep`; the smoke (every shelter drawn with its own look) |
+| The nest-side algae bed, the krill swarm and the fallen giant | the rules, the sim, `game/scenes/aquatic/aquatic_world.gd` | `test_new_feeding_grounds_feed_the_right_mouths_and_regrow`, `test_every_site_sits_in_the_water_and_its_zone`, `test_every_site_and_food_kind_is_drawn` |
+| The spawning nest (Blender asset), a clutch per generation, resting heals (section 6) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_nest.json`, `game/scenes/aquatic/aquatic_world.gd`, the sim | `tests/test_aquatic_assets.gd`, `test_resting_at_the_nest_heals`, `tests/test_assets.gd`; the smoke (the nest drawn, one clutch then two, a rest that heals) |
+| The editor's reef-stone plinth (Blender asset) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_plinth.json`, `game/ui/aquatic_editor.gd` | `tests/test_aquatic_assets.gd`, `tests/test_assets.gd`; the smoke |
+| The save stays v5 | no save, migration or persistence file changed | `test_a_slice_v5_block_still_loads`, `test_a_new_tail_and_new_relations_round_trip_through_the_save`; the smoke's reload |
+
+The finish gates of the two Blender assets are in `docs/evidence/credit-aquatic-r2/aquatic_asset_gates.md`, and the
+before and after frames (the `*_before.jpg` and `*_after.jpg` pairs) are beside it.
+
+**The save** (IMPLEMENTED; the rule is the owner's: no schema change). Round 2 writes only the fields the v5 block
+already has: `game/domain/save_game.gd`, `game/systems/save_migrations.gd`, `game/systems/persistence_service.gd`,
+`docs/saves/` and `tests/test_persistence.gd` are as PR #192 left them. New content travels as new values in existing
+fields: a tail kind the rules list (`body.tail`), a species id in `relations`, a zone or site id in `discovered`; the
+nest's clutches are read from `history`. The rules' list of tails is what makes a tail legal when a save loads, so:
+
+- a slot that PR #192's slice wrote loads in this build, the new species start neutral, and it is written back with
+  exactly the v5 keys (`test_a_slice_v5_block_still_loads` also pins the block's and the body's keys to PR #192's);
+- a block this build writes for a fish with a fluke or ribbon tail still loads in a slice build, whose restore skips
+  the species it does not know;
+- a fish with a round 2 tail (lunate, paddle or whip) is forward only: a build with the slice's rules refuses that save
+  and names the unknown tail; nothing is dropped.
+
+Not in round 2: pectoral fin shapes (they need a new body key, decision 5); dedicated fish parts (a crescent or paddle
+caudal fin, a swept pectoral fin), so the tails are drawn with the creature parts `tail_fluke` and `fin` and their
+handles, and the Aquatic code adds no part records; and a percept-fed species brain (Bible §13).
 
 ## 9. Acceptance (Bible §6 and §23 M4)
 
@@ -196,6 +369,8 @@ it and the hoverer must hide in an arch or burst.
 - The cell lineage's id, generation, diet and colour arrive in the aquatic body (automated).
 - Discovery and relationships survive a reload: the slot keeps the aquatic block (save v5) and the smoke opens the
   stage again to the same fish, generation, finds, points and place (IMPLEMENTED).
+- After round 2, a slot from the slice still loads, and round 2's tails, species and sites survive a reload
+  (IMPLEMENTED, section 8b).
 - Windows build exported; not Windows-verified until launched there.
 
 ## 10. Decisions for the owner
@@ -208,3 +383,11 @@ it and the hoverer must hide in an arch or burst.
 3. When the cell stage offers "go to the sea" (the cell-to-Aquatic transition): proposed at cell size 4 at the
    pool's edge, as a choice.
 4. Whether oxygen is ever added (Bible §6 makes it conditional; the slice uses pressure only).
+5. Pectoral fin shapes (aquatic-r2, PROPOSED): a paddle, wing or frill shape for the side fins needs one optional key
+   in the saved body (`fin_shape`). That is a save schema change, so it needs the owner's approval. Until then the
+   side fins are size steps (0 to 3), each drawn differently.
+6. Round 2's names (PROPOSED, original): glass minnows, reef cleaners, vent glowfins; the lunate, paddle and whip
+   tails; the pillar ring, the vent chimney, the nest-side algae bed, the krill swarm and the fallen giant.
+7. Lobe fins in the save (PROPOSED; shipped to main on the owner's "ship it all" of 2026-11-10, see docs/DECISIONS.md): the fish body gains one optional whole-number key, `limbs`
+   (0 to 2, read as 0 when missing, so every v5 save still loads and the schema version stays 5). It is a new key in
+   the saved body, so it is the owner's call like decision 5. Without it the shore can never offer land.

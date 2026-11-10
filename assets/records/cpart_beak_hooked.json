@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature mouth part (PROPOSED): a raptor's deep keeled beak hooking down past a short lower mandible, dark at the tips, under a fleshy cere with two nostrils; opens on a shape key.",
+  "purpose": "Creature mouth part (PROPOSED): a raptor's hooked beak, a deep keeled upper mandible arcing into a sharp hook over a shorter lower mandible, with a yellow cere and nostril slits; opens, hooks and lengthens on shape keys.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_beak_hooked.blend",
-  "generator_script": "tools/blender/make_creature_parts.py",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
   "export_path": "assets/export/cpart_beak_hooked.glb",
   "export_format": "GLB",
   "dependencies": [],
   "revision": 1,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.082,
-    "y_forward": 0.099,
-    "z_up": 0.158
+    "x": 0.053,
+    "y_forward": 0.074,
+    "z_up": 0.117
   },
-  "triangles": 430,
+  "triangles": 1152,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -49,22 +49,21 @@
     }
   ],
   "materials": [
-    "M_BeakHooked",
     "M_BeakHookedCere",
-    "M_BeakHookedTip"
+    "M_BeakHookedHorn"
   ],
   "rig_family": null,
   "animations": [],
   "sockets": [],
   "nodes": [
     "BeakHooked",
-    "Lower"
+    "BeakHookedLower"
   ],
   "part_type": "beak_hooked",
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "beak_hooked",
-    "footprint_radius_m": 0.051,
+    "footprint_radius_m": 0.037,
     "sink_depth_m": 0.02,
     "chiral": false,
     "orientation": "forward_cone",
@@ -78,27 +77,37 @@
     "handles": [
       {
         "key": "H1_Open",
-        "meaning": "the lower mandible drops 30 degrees about the hinge",
+        "meaning": "the lower mandible dropped 26 degrees at the gape",
         "default_permille": 0
       },
       {
         "key": "H2_Hook",
-        "meaning": "the hook curls further down and back",
+        "meaning": "the hook's outer half curled 22 degrees further under",
+        "default_permille": 0
+      },
+      {
+        "key": "H3_Length",
+        "meaning": "the beak 30% longer past the cere",
         "default_permille": 0
       }
     ],
-    "handles_note": "H1 is on Lower, H2 on BeakHooked."
+    "handles_note": "All three keys are on BeakHooked and BeakHookedLower with the same names; the runtime sets them together. H1_Open moves only the lower mandible, H2_Hook only the upper."
   },
   "paint_mix": {
-    "M_BeakHooked": 0.15,
-    "M_BeakHookedTip": 0.0,
-    "M_BeakHookedCere": 0.7
+    "M_BeakHookedCere": 0.6,
+    "M_BeakHookedHorn": 0.05
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
-    "tolerance_m": 0.0008,
-    "triangles_before": 1408,
-    "triangles_after": 430
+    "tolerance_m": 0.0003,
+    "triangles_before": 2400,
+    "triangles_after": 1152
   },
-  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+  "review_notes": {
+    "gate1_shape": "pass: side view reads as a raptor's beak - a deep keeled upper mandible arcing into a pointed hook that overhangs the shorter lower mandible, the two closed along a seam with the upper's edges flanking the lower; the cere stands proud as a clean ring band; handles render as named (H1_Open drops the lower mandible, H2_Hook curls the hook under, H3_Length draws it out).",
+    "gate2_materials": "pass: two distinct finishes - slate-blue horn darkening to a near-black hook with fine lengthwise grain, and a saturated yellow waxy cere with one round dark nostril each side; the material borders are clean rings (the lower mandible is kept undecimated for that).",
+    "gate3_neutral_light": "pass: under the neutral white rig the horn's soft highlight runs along the keel and the hook, nothing clips and the underside of the hook stays readable.",
+    "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (every existing mouth and eye points the same way; not this art). In the creature editor on the tortoise (beak swapped in memory, docs/evidence/credit-more-parts/after_tortoise_beak_hooked.jpg) it loads, seats on the snout tip without floating or deep clipping, is in scale with the head and keeps its slate horn and yellow cere, but it points up out of the snout. With the frame fix previewed (more_parts_shots.gd --cone-fix-preview, conefix_tortoise_beak_hooked.jpg) it points forward with the hook curving down and reads as a raptor's beak at the world camera's distance."
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

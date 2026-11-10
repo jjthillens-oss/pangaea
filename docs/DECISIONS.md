@@ -142,6 +142,29 @@ Compatibility renderer: the values above are tuned for Forward+, the Windows bui
 Evidence, both renderers at 1920×1080 and gameplay zoom, four shots (grazer, hunter, starving, rim; renders in `screenshots/m1-step2-look/`): the two renderers' floor medians are 6.2 to 7.5 CIE76 apart (grazer: Compatibility `#2F7C80`, Forward+ `#398F96`); floor saturation is at most 0.46 in both; plankton cores stay yellow-green (hue 110 to 119 in Compatibility, 115 to 123 in Forward+); the 97th-percentile L* is at most 72 in Compatibility and 81 in Forward+ (the rim shot was 94 in Forward+ and 100 in Compatibility). Near-white plankton pixels (L* 92 or more, chroma under 15) are 10 to 15% in Compatibility (27 to 36% with the Forward+ values, under 1% in Forward+). Against the `m1-swim-eat` shots in the same renderer, the luminance contrast of the cell, plankton and carrion against the floor is higher in every shot, and so is their colour difference, except the cell's at the rim (Compatibility 27 → 21, Forward+ 27 → 10) and the fed cell's in Forward+ (30 to 31 → 28).
 Impact: the mint sample cell is now close in hue to the water and reads by value and by its shadow, most weakly over the shallows near the rim; the art direction's coral default membrane (`#E9744F`) would restore a hue difference. Compatibility frames stay a little darker and greener than Forward+, with paler plankton tops and stronger caustics in the shallows by the rim, so the look is still judged in Forward+ (`docs/TOOLCHAIN.md` has the recipe for Forward+ renders in the container).
 
+## 2026-10-25 · The aquatic path is a supported route to the Interstellar era (CONFIRMED)
+Joshua approved the full aquatic path on 2026-10-25 05:42 UTC, after the research decision card: "We need a 100% add
+this because it's exactly what the community wanted." A sea lineage may stay in the water through every era, with
+reef tribes, connected reef cities and water-filled ships. The bounded content plan that Bible §4 requires is
+`docs/bible/addendum-aquatic-path.md`, which now forms part of the Bible; its demand record is
+`docs/research/aquatic-path-wishes.md`. Reason: the most-requested missing content since Spore's 2005 demo, and
+Bible §4 already says never force a land build. Impact: aquatic variants attach to M5 to M8, and a small reef spike
+(M4.5) precedes M5 to prove 3D settlement navigation; no change to era count or order, the save schema, the art
+pipeline or M0 to M4. Every variant, module set and number in the addendum is PROPOSED until built and recorded.
+Open for Joshua (addendum section J): the tone position, the M4.5 spike placement, the tideline rule, and the seven
+era-5 module names; section K's recommendation is the working assumption. The Bible moves to v0.2 at its next
+revision.
+
+## 2026-10-25 · Bubble cities, submarines, and traits that matter both ways (CONFIRMED)
+Joshua's design direction for the aquatic path, 2026-10-25 05:43 UTC: underwater cities sit inside air bubbles so
+land creatures can come in and out; leaving the water is not a one-way transition, because a lineage that walks out
+has to build a submarine to go back in (or keep its fins); and traits matter both ways, so fins and flippers make a
+body slower on land while a body reshaped for land speed buys the sea back with a submarine. Recorded as section A2
+of `docs/bible/addendum-aquatic-path.md`. Reason: it answers the mod and forum wish for underwater cities and
+submarines and keeps the Bible's rule that anatomy must influence gameplay. Impact: the Tribal and Civilization
+aquatic variants centre on the bubble; a submarine vehicle module set is required (crude from Tribal, proper from
+Civilization); the phenotype service owns land-versus-water movement costs as tuning data. Numbers are PROPOSED.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
@@ -1596,3 +1619,57 @@ sharing (IB-31), authored terrain variety (IB-32) and colour freedom in the edit
 (`docs/research/mod-wishes.md`, `docs/research/innovation-backlog.md`), are now backlog features in
 `docs/director/backlog.json`. IB-32's runtime placement boundary (Bible §15) still needs the owner's approval before
 its slice merges. Impact: no era, save schema or pipeline change; each slice follows its owner's usual tier.
+
+## 2026-10-25 · Swim parts slow a creature on land (PROPOSED; IMPLEMENTED)
+
+- **Owner direction (Joshua, 2026-10-25 05:43)**: traits matter both ways. "If they leave their fins and
+  their floppers on, they're slower on land", and a player who wants to be faster on land changes the
+  creature in the editor.
+- **Rule** (`CreatureStats.land_factor`, tuning `creature_stage.json` "land_drag"): each fin pair, tail
+  fluke and flipper takes per_part x scale off the top land speed (fin 0.06, fluke 0.10, flipper 0.08 at
+  scale 1; a mirrored part twice), never below 0.5 of what the legs allow. A lone centerline fin (the
+  starter quadruped's back fin) rides clear of the legs and does not drag. The parts add no mass. The
+  editor's stats show "Swim parts N · land speed -X%" while a walking body keeps them.
+- A fish that crawls ashore (aquatic PR #200) arrives with its fluke and side fins, so it starts slow on
+  land until the player trades them for legs. Water access later (rivers, the submarine return in the
+  aquatic path) gives the same parts their payoff.
+
+## 2026-10-25 · Stage music: a soundtrack for each stage and the editors (PROPOSED; IMPLEMENTED)
+
+Joshua asked for lush, beautiful instrumentals like Spore's, not thin synth (2026-10-23 08:09), and the
+coordinator asked for a score per stage. The music stays human-made CC0 tracks from OpenGameArt, uploaded
+before 2024, each logged with its URL, author and upload date in its record; nothing is generated or copied.
+Every track is PROPOSED until Joshua listens (preview: `pangaea/audio/stage_music_preview.mp3` in the project files).
+- **Stages.** `Soundtrack.STAGES` gives each stage a calm playlist and a danger track: the cell keeps its
+  four tracks and *Frenzied Swimming*; the Aquatic stage plays *Underwater Theme* (CleytonKauffman),
+  *Underwater World* (Indieteur), *Deep Sea* (Umplix) and *Underwater Theme, 2nd variation* (Spring Spring),
+  with *Frenzied Swimming* for danger; the creature stage plays *Beautiful Forest [Orchestra]* and *New Sunrise*
+  (nene), *Fantasy Orchestral Theme* (Joth) and *At Home - Orchestral* (Wolfgang_), with *Determined Pursuit*
+  (Emma_MA) for danger. `set_stage` fades the old stage out (about 2 s) before the new one starts. `main.gd`
+  sets the cell stage for the pool and the creature stage for the creature stage; the Aquatic stage calls
+  `set_stage("aquatic")` itself. The title keeps *Magic Space*.
+- **Editors.** `set_editor(true)` brings in an editor track (*Happy Lullaby* and *Calm Piano 1 (Vaporware)* by
+  cynicmusic, *Heavenly Loop* by isaiah658, taken in turn), looped, with the low-pass open; the stage's calm
+  track pauses under it and resumes where it was. `main.gd` does this for the cell editor; the creature
+  editor calls it through the `soundtrack` group.
+- **Levels.** `TRACK_GAIN_DB` evens the tracks out near −16 LUFS (danger −14), at most ±6 dB, so the files
+  stay the composers' own. Three WAV downloads are re-encoded to Ogg Vorbis q5 to keep the repo small
+  (logged in their records).
+- Bible 20's "music grows with scale and keeps its motifs" still waits for a composed theme.
+
+## 2026-10-25 · Creature and Aquatic stage sound effects (PROPOSED; IMPLEMENTED, not yet hooked)
+
+Original effects rendered from code like the cell's: `game/scenes/audio/stage_synth.gd` holds 31 recipes
+(creature `cr_`: steps by foot type paw, hoof, claw and webbed; bite, hurt, die, eating fruit and meat, sing,
+befriend, snub, mate, part pickup, earn, refuse; Aquatic `aq_`: burst, pressure warning and clear, the lancer's
+investigate, pursue and give-up, the drifter's warning, bite, hurt, die, eat, signal and its answer, mate, found,
+refuse) and `make_cell_audio.gd` renders them with three new ambience loops (`amb_meadow`, `amb_open_water`,
+`amb_fin_swim`). `CreatureAudio` and `AquaticAudio` (both `StageAudio`) map their sims' events to cues, set the
+soundtrack's stage and danger mood and open the editor music. The stages still have to add the node and call
+`on_event`, `step`, `set_motion` and `burst` (their threads own that code). PROPOSED until Joshua listens.
+
+## 2026-11-10: Pool to sea to land goes to main (PR #223)
+
+Joshua in the project chat, 06:03 UTC: "Let's ship it all to main right now, just to get caught up." PR #223 is merged on that instruction: aquatic round 2, the sea's shore crossing (lobe fins, "Crawl onto land", the `.pre-terrestrial` checkpoint), the `shore_piece` asset for the pool's sea edge, the continuity test and smoke, and the first reef settlement rules in `game/domain/reef/` (backlog U-03; not wired into the game).
+
+The PR adds one optional whole-number key to the saved fish body, `limbs` (0 to 2, read as 0 when missing; the schema version stays 5). He was asked about that key on a decision card at 05:55 UTC and did not tap it; the builder read "ship it all" as covering it. That is the builder's reading, not a separate approval, so the key, its numbers and the looks stay PROPOSED until he confirms them, and the key can be taken out again without a migration (a body without it is legal).
