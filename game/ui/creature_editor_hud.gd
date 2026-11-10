@@ -25,6 +25,8 @@ signal random_requested
 signal head_shape_changed(key: String, value: int)
 ## A head shape slider drag began (true) or ended (false), so the editor makes the drag one undo step.
 signal head_shape_drag(started: bool)
+## A Body size button was pressed (IB-30): -1 smaller, +1 bigger.
+signal body_size_step(direction: int)
 
 const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
@@ -583,3 +585,78 @@ static func head_value_text(key: String, value: int) -> String:
 		if spec["key"] == key and spec["kind"] == "amount":
 			return "%d%%" % roundi(value / 10.0)
 	return "%.2fx" % (value / 1000.0)
+
+
+# Body size (IB-30, PROPOSED) ---------------------------------------------------------------------------------------
+
+var _size_box: VBoxContainer
+var _size_smaller: Button
+var _size_bigger: Button
+var _size_value: Label
+var _size_hint: Label
+
+
+## The Body size row right under the stats, built once: Smaller and Bigger buttons (body_size_step), the current
+## length and tier between them, and a one-line hint of what the tier does.
+func setup_body_size() -> void:
+	if _size_box != null:
+		return
+	var box: VBoxContainer = stats_text.get_parent()
+	_size_box = VBoxContainer.new()
+	_size_box.name = "BodySize"
+	_size_box.add_theme_constant_override("separation", 2)
+	var sep := HSeparator.new()
+	sep.name = "BodySizeSep"
+	var title := Label.new()
+	title.text = "BODY SIZE"
+	title.theme_type_variation = &"CaptionLabel"
+	var row := HBoxContainer.new()
+	row.name = "Row"
+	_size_smaller = Button.new()
+	_size_smaller.name = "Smaller"
+	_size_smaller.text = "Smaller"
+	_size_smaller.focus_mode = Control.FOCUS_NONE
+	_size_smaller.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+	_size_smaller.pressed.connect(func(): body_size_step.emit(-1))
+	_size_value = Label.new()
+	_size_value.name = "Value"
+	_size_value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_size_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_size_value.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+	_size_bigger = Button.new()
+	_size_bigger.name = "Bigger"
+	_size_bigger.text = "Bigger"
+	_size_bigger.focus_mode = Control.FOCUS_NONE
+	_size_bigger.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+	_size_bigger.pressed.connect(func(): body_size_step.emit(1))
+	row.add_child(_size_smaller)
+	row.add_child(_size_value)
+	row.add_child(_size_bigger)
+	_size_hint = Label.new()
+	_size_hint.name = "Hint"
+	_size_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_size_hint.add_theme_font_size_override("font_size", HEAD_FONT_PX - 2)
+	_size_box.add_child(sep)
+	_size_box.add_child(title)
+	_size_box.add_child(row)
+	_size_box.add_child(_size_hint)
+	box.add_child(_size_box)
+	box.move_child(_size_box, stats_text.get_index() + 1)
+
+
+## Shows the body's size: `value` like "1.40 m  ·  Medium", `hint` the tier's effect line; a button greys at its end.
+func set_body_size(value: String, hint: String, can_smaller: bool, can_bigger: bool) -> void:
+	if _size_box == null:
+		return
+	_size_value.text = value
+	_size_hint.text = hint
+	_size_smaller.disabled = not can_smaller
+	_size_bigger.disabled = not can_bigger
+
+
+## What the Body size row shows now: {value, hint, can_smaller, can_bigger} (empty before setup_body_size).
+func body_size_shown() -> Dictionary:
+	if _size_box == null:
+		return {}
+	return {"value": _size_value.text, "hint": _size_hint.text, "can_smaller": not _size_smaller.disabled,
+			"can_bigger": not _size_bigger.disabled}

@@ -328,7 +328,7 @@ func _drive(c: Dictionary, command: Vector2) -> void:
 	if planner == null:
 		return
 	# A heavy body cannot reach its legs' top speed (CreatureStats.speed_factor): the throttle is scaled down.
-	planner.step(DT, command.x * float(c["stats"].get("speed_factor", 1.0)), command.y)
+	planner.step(DT, command.x * float(c["stats"].get("speed_factor", 1.0)), command.y * float(c["stats"].get("turn_factor", 1.0)))
 	_place(c, Rules.clamp_to_field(planner.position, half_size, float(c["stats"]["body_radius_m"])))
 	c["yaw"] = planner.yaw
 

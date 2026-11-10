@@ -51,6 +51,14 @@ const WorldRules := preload("res://game/domain/creature/creature_world_rules.gd"
 ## The STATS track's anatomy-to-play numbers (CreatureStats, pure); shown when its file is present.
 const STATS_PATH := "res://game/domain/creature/creature_stats.gd"
 const STAGE_TUNING_PATH := "res://game/data/creature/creature_stage.json"
+## Body size (IB-30, PROPOSED): the tier names and effect lines the HUD shows; the range when the tuning has none.
+const SizeTiers := preload("res://game/domain/creature/size_tiers.gd")
+const SIZE_TIER_TEXT := {
+	"small": ["Small", "Small: nimble turns, light appetite, shorter bite reach"],
+	"medium": ["Medium", "Medium: balanced reach, turning and appetite"],
+	"large": ["Large", "Large: longer bite reach, slower turns, hungrier"],
+}
+const BODY_SIZE_DEFAULT := {"min_mm": 300, "max_mm": 4000, "step_mm": 300}
 
 const HANDLE_PICK_PX := 16.0
 ## Handles keep one size on screen whatever the zoom: this radius in pixels (at the project's 1080 rows, scaled with
@@ -131,6 +139,7 @@ var _orbit := Vector2(2.05, 0.3)
 var _distance := 2.6
 ## The distance the body was framed at (frame_body), the zoom range's yardstick; 0 before the first framing.
 var _frame_distance := 0.0
+var _framed_length_mm := 0
 ## The longest side of REFERENCE_BODY's bounds (m), measured once.
 var _reference_size_m := 0.0
 ## Whether the "Start from" presets are offered (offer_presets), and the preset the design started from since the
@@ -185,6 +194,7 @@ func _wire() -> void:
 	hud.preset_chosen.connect(start_from_preset)
 	hud.random_requested.connect(func(): start_random())
 	hud.head_shape_changed.connect(func(key: String, value: int): set_head_shape(key, value))
+	hud.body_size_step.connect(func(direction: int): step_body_size(direction))
 	hud.head_shape_drag.connect(func(started: bool):
 		if started:
 			session.begin_gesture()
@@ -226,6 +236,7 @@ func setup(body: RefCounted, points: int) -> void:
 		roles[type] = String(part_rules[type].get("role", ""))
 	hud.setup(tools, costs, SKIN_COLORS, roles, Look.COVERINGS)
 	hud.setup_head_shape(session.head_shape_ranges())
+	hud.setup_body_size()
 	if _icons == null:
 		_icons = PartIcons.new()
 		_icons.name = "PartIcons"
@@ -288,6 +299,7 @@ func _frame_body() -> void:
 	_focus = box.get_center() + _rig_offset
 	_distance = 2.2 * box.get_longest_axis_size()
 	_frame_distance = _distance
+	_framed_length_mm = int(session.working.reference_length_mm)
 	var disc := maxf(1.2, 1.4 * box.get_longest_axis_size())
 	floor_disc.scale = Vector3(disc, 1.0, disc)
 	_update_camera()
@@ -298,6 +310,8 @@ func _frame_body() -> void:
 func _rebuild() -> void:
 	_dirty = false
 	var desc = session.working
+	if int(desc.reference_length_mm) != _framed_length_mm and walker == null:
+		_frame_body()   # the body changed size (Body size, or its undo): refit the camera and the floor
 	_store_look(desc.extra)
 	var placed := AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations)
 	_rebuild_handles(desc, placed)
@@ -847,6 +861,34 @@ func set_head_shape(key: String, value: int) -> Dictionary:
 	return r
 
 
+## The Body size rules: the stage tuning's "body_size" block {min_mm, max_mm, step_mm} (PROPOSED).
+func body_size_rules() -> Dictionary:
+	return _stage_tuning.get("body_size", BODY_SIZE_DEFAULT)
+
+
+## One Body size step: bigger (`direction` > 0) or smaller. The whole body rescales (its reference length), as one
+## undo step and free of points; at the end of the range it is refused with the reason.
+func step_body_size(direction: int) -> Dictionary:
+	if walker != null:
+		test_drive(false)
+	return _result(session.step_body_size(direction, body_size_rules()))
+
+
+## The working body's size tier id ("small", "medium", "large"; "" without the tuning).
+func body_size_tier() -> String:
+	return String(SizeTiers.of_body(session.working, _stage_tuning.get("size_tiers", {}))["id"])
+
+
+func _refresh_body_size() -> void:
+	var size_rules := body_size_rules()
+	var mm: int = session.body_size_mm()
+	var text: Array = SIZE_TIER_TEXT.get(body_size_tier(), ["", "Body size changes reach, turning and appetite"])
+	var value := "%.2f m" % (mm / 1000.0)
+	if text[0] != "":
+		value += "  ·  %s" % text[0]
+	hud.set_body_size(value, text[1], mm > int(size_rules["min_mm"]), mm < int(size_rules["max_mm"]))
+
+
 ## The screen position of a point in body space (the description's metres), for driving by the method twins.
 func screen_of(body_point: Vector3) -> Vector2:
 	return _unproject(body_point + _rig_offset)
@@ -1200,6 +1242,7 @@ func _refresh_hud() -> void:
 	hud.set_stats(lines)
 	hud.set_undo_redo(not session._undo.is_empty(), not session._redo.is_empty())
 	hud.set_head_shape(session.head_shape())
+	_refresh_body_size()
 
 
 func _exit_tree() -> void:

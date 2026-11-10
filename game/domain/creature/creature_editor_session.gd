@@ -370,6 +370,35 @@ func set_head_shape(key: String, value: int) -> Dictionary:
 		return "")
 
 
+# Body size (IB-30, PROPOSED) ---------------------------------------------------------------------------------------
+
+
+## The working body's overall scale, BodyDescription.reference_length_mm.
+func body_size_mm() -> int:
+	return int(working.reference_length_mm)
+
+
+## Sets the body's overall scale to `mm`, clamped to `min_mm`..`max_mm` (tuning "body_size"; the caller reads the
+## data). Positions and radii are per mille of the reference length, so the whole body grows or shrinks in
+## proportion. One undo step; free of points. Refused when already at that size (the clamp's end), and, like every
+## op, when it would add a validation problem. The result carries {length_mm}.
+func set_body_size(mm: int, min_mm: int, max_mm: int) -> Dictionary:
+	var to := clampi(mm, min_mm, max_mm)
+	if to == int(working.reference_length_mm):
+		return _no("The body is already at its %s size." % ("smallest" if to <= min_mm else "largest" if to >= max_mm else "set"))
+	return _apply(func(d):
+		d.reference_length_mm = to
+		return {"length_mm": to})
+
+
+## One step bigger (`direction` > 0) or smaller (< 0): `size_rules` is the tuning's "body_size" block,
+## {min_mm, max_mm, step_mm}.
+func step_body_size(direction: int, size_rules: Dictionary) -> Dictionary:
+	var step := int(size_rules.get("step_mm", 100)) * signi(direction)
+	return set_body_size(int(working.reference_length_mm) + step, int(size_rules.get("min_mm", 100)),
+			int(size_rules.get("max_mm", 8000)))
+
+
 # Undo, cost, preview, commit ---------------------------------------------------------------------------------------
 
 
