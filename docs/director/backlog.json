@@ -31,7 +31,9 @@
    "owner": "aquatic",
    "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
    "feature": "Finish claude/credit-aquatic-r2 from its tip, open the PR, merge when green",
-   "evidence": [],
+   "evidence": [
+    "claude/credit-aquatic-r2 merged from its tip (30d4c42) into claude/project-thread-cpvfp0 on 2026-11-10 together with the shore crossing; tests/test_aquatic_sim.gd and tests/test_aquatic_assets.gd pass there; waits for the owner's PR review (looks and feel)"
+   ],
    "passes": false,
    "deps": []
   },
@@ -237,7 +239,13 @@
    "tier": 1,
    "owner": "aquatic",
    "feature": "Aquatic shore exit reuses ShoreLink and EraTransition into the creature stage with a .pre-terrestrial checkpoint",
-   "evidence": [],
+   "evidence": [
+    "Shore crossing from claude/project-thread-4n310e merged onto aquatic round 2 on claude/project-thread-cpvfp0 (2026-11-10)",
+    "builds/smoke/aquatic.log 2026-11-10: 58 checks, 0 failed; lobe fins open the shore, 'Stay in the sea' is recorded, 'Crawl onto land' opens the creature stage, the slot is terrestrial and the sea is kept as the .pre-terrestrial checkpoint",
+    "tests/test_era_transition.gd and tests/test_shore_link.gd pass (the aquatic to terrestrial link through EraTransition)",
+    "Open for the owner: the fish body's optional 'limbs' key in the save's aquatic block (aquatic plan section 10)",
+    "Evidence from the builder; passes stays false until a separate review (README rule 4)"
+   ],
    "passes": false,
    "deps": []
   },
@@ -248,7 +256,12 @@
    "tier": 1,
    "owner": "engineering",
    "feature": "One save carries a lineage from cell to sea to land: lineage id, genome, generation, discoveries and relationships survive both transitions, a save, a reload and a death",
-   "evidence": [],
+   "evidence": [
+    "tests/test_continuity.gd (2026-11-10, 2 tests pass): the lineage id, world seed, genome, discoveries and relationships are unchanged from the pool to the sea to the land, across a save, a reload and a death in the sea; each crossing's checkpoint restores the era before it for the same lineage only",
+    "builds/smoke/continuity.log 2026-11-10: 22 checks, 0 failed; the real main scene on one slot: Continue, Swim out to sea, Crawl onto land, Continue on land, back to the sea, back to the pool",
+    "Not yet covered: a death on land (the creature stage's own respawn) inside the chained run",
+    "Evidence from the builder; passes stays false until a separate review (README rule 4)"
+   ],
    "passes": false,
    "deps": [
     "M4-01",

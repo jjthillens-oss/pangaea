@@ -225,6 +225,13 @@ the body qualifies. Accepting saves a checkpoint, keeps the water reachable from
 stage with the same lineage. The land transition itself belongs to the cell-to-creature work in the "Spore-style
 evolution game" thread; Aquatic hands it the lineage, it does not build its own land.
 
+Built (2026-11-10, awaiting the owner's review): lobe fins are a body step in the fin editor (0 to 2; each step costs
+points, mass and drag, so a crawler swims slower). At `crawl_limbs` the shore offers "Crawl onto land" or "Stay in
+the sea"; without them it says what is missing. Crawling saves, keeps the sea as the `.pre-terrestrial` checkpoint
+(EraTransition) and opens the creature stage with the fish's colour, tail fin and side fins as its first land body.
+`tests/test_continuity.gd` and `tests/smoke/continuity_smoke.gd` follow one save from the pool to the sea to the land
+and back again.
+
 ## 7a. Staying in the sea: the aquatic path (direction CONFIRMED 2026-10-25; design PROPOSED)
 
 Joshua, 2026-10-25 05:25: a lineage that stays in the water should be a real path through the later eras (underwater
@@ -381,3 +388,6 @@ handles, and the Aquatic code adds no part records; and a percept-fed species br
    side fins are size steps (0 to 3), each drawn differently.
 6. Round 2's names (PROPOSED, original): glass minnows, reef cleaners, vent glowfins; the lunate, paddle and whip
    tails; the pillar ring, the vent chimney, the nest-side algae bed, the krill swarm and the fallen giant.
+7. Lobe fins in the save (PROPOSED, needs the owner): the fish body gains one optional whole-number key, `limbs`
+   (0 to 2, read as 0 when missing, so every v5 save still loads and the schema version stays 5). It is a new key in
+   the saved body, so it is the owner's call like decision 5. Without it the shore can never offer land.
