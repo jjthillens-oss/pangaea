@@ -14,6 +14,8 @@
 	"death": {"points_loss_share": 0.2},
 	"mass": {"kg_per_m3": 900},
 	"size": {"ref_kg": 120, "power": 0.6, "_note": "above ref_kg the top speed falls: 0.69x at 300 kg, 0.35x at 1.2 t"},
+	"land_drag": {"per_part": {"fin": 0.06, "tail_fluke": 0.10, "flipper": 0.08}, "scale_power": 1.0, "floor": 0.5, "paired_only": ["fin"],
+		"_note": "swim parts kept after crawling ashore slow the land run: each takes per_part x scale off the top speed, a pair twice, never below floor; a lone back fin does not drag"},
 	"size_tiers": {"tiers": [
 			{"id": "small", "min_mm": 0, "speed": 1.0, "bite_reach": 0.85, "energy_use": 0.8, "turn": 1.25},
 			{"id": "medium", "min_mm": 600, "speed": 1.0, "bite_reach": 1.0, "energy_use": 1.0, "turn": 1.0},

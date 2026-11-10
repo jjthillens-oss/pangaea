@@ -1,0 +1,22 @@
+{
+  "id": "aq_pressure_clear_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/aq_pressure_clear_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "aq_pressure_clear",
+  "variant": 1,
+  "purpose": "Back within the safe depth: a rising bubble release and a soft bell.",
+  "visual_equivalent": "The pressure warning clears",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 1.4,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"aq_pressure_clear\", 0)"
+}

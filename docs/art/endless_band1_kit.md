@@ -1,7 +1,7 @@
 # Endless world band-1 art kit and S3 extras (PROPOSED)
 
 This is the band-1 art for the endless cell world and the S3 extras from section I of
-`docs/endless-cell-plan.md`. The kit is built to the same art contract as band 0
+the earlier endless-cell plan. The kit is built to the same art contract as band 0
 (`docs/art/endless_s1_kit.md`): bounds, swim-band outline, heights, triangle budgets, node names,
 growth children and colours clear of the food and threat hues.
 

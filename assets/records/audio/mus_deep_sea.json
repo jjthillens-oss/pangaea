@@ -1,0 +1,27 @@
+{
+  "id": "mus_deep_sea",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_deep_sea.mp3",
+  "purpose": "A warm, slow ocean ambience: the Aquatic stage's calm playlist (the deep water).",
+  "role": "aquatic_calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 79.15,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Deep Sea",
+      "author": "Umplix",
+      "url": "https://opengameart.org/content/deep-sea",
+      "download": "https://opengameart.org/sites/default/files/deep_sea.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2022-03-07"
+    }
+  ]
+}

@@ -2,6 +2,8 @@ extends SceneTree
 ## Screenshots of one creature body in each skin covering (creature_skin.gdshader `covering`), for art review.
 ##   xvfb-run -a -s "-screen 0 1280x720x24" GODOT --path . --rendering-method gl_compatibility \
 ##     --rendering-driver opengl3 --resolution 1280x720 --script res://tools/covering_shots.gd -- --out=DIR
+##     [--only=fur] [--shells=N] [--param=fur_shag:0.6,...]
+## --param sets skin shader uniforms (float values) on the body and every fur shell pass (SpineRig.set_skin_param).
 
 const Fixtures := preload("res://tests/creature_fixtures.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -12,6 +14,7 @@ const COVERINGS := ["default", "fur", "scales", "smooth_wet"]
 var out_dir := "user://covering_shots"
 var only := -1         # --only=fur renders one covering
 var shells := -1       # --shells=N overrides the fur shell count (0 = off)
+var skin_params := {}  # --param=name:value,... skin shader uniforms
 
 
 func _initialize() -> void:
@@ -22,6 +25,9 @@ func _initialize() -> void:
 			only = COVERINGS.find(arg.trim_prefix("--only="))
 		elif arg.begins_with("--shells="):
 			shells = int(arg.trim_prefix("--shells="))
+		elif arg.begins_with("--param="):
+			for pair in arg.trim_prefix("--param=").split(",", false):
+				skin_params[pair.get_slice(":", 0)] = float(pair.get_slice(":", 1))
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
@@ -64,6 +70,8 @@ func _run() -> void:
 		if shells >= 0:
 			p["fur_shells"] = shells
 		rig.use_skin_shader(p)
+		for k in skin_params:
+			rig.set_skin_param(k, skin_params[k])
 		for view in [["gameplay", Vector3(1.0, 0.45, -0.2), 2.0], ["side", Vector3(1.0, 0.45, -0.2), 1.25], ["close", Vector3(0.7, 0.35, 0.5), 0.45]]:
 			var dir: Vector3 = (view[1] as Vector3).normalized()
 			cam.look_at_from_position(c + dir * r * float(view[2]), c, Vector3.UP)

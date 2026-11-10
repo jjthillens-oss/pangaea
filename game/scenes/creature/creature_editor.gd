@@ -87,6 +87,8 @@ const PITCH_MAX := 1.4
 const UNSAVED_TEXT := "Unsaved edits: press Esc or Back again to leave without them"
 const NO_LEGS_TEXT := "No legs to walk on; press Done again to go anyway"
 const LOCKED_TEXT := "Find a %s in the world to use it"
+## The stats line for swim parts kept on a walking body: they slow it on land (CreatureStats land_drag).
+const SWIM_DRAG_TEXT := "Swim parts  %d   ·   land speed -%d%%"
 const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5),
 		"turn": Color(1.0, 0.9, 0.2)}
 const SKIN_COLOR_KEY := "skin_color"
@@ -1235,6 +1237,8 @@ func _refresh_hud() -> void:
 		var s: Dictionary = _stats_script.of(session.working, part_rules, CreatureData.gait_table(), _stage_tuning)
 		lines.append("Speed  %.1f m/s   ·   health  %d" % [float(s.get("speed_mps", 0.0)), int(s.get("max_health", 0))])
 		lines.append("Bite  %d   ·   sight  %.0f m" % [int(s.get("bite_power", 0)), float(s.get("sight_m", 0.0))])
+		if int(s.get("swim_parts", 0)) > 0 and bool(s.get("has_legs", false)):
+			lines.append(SWIM_DRAG_TEXT % [int(s["swim_parts"]), roundi((1.0 - float(s["land_factor"])) * 100.0)])
 	var gone := PartManifest.placeholder_ids(session.working, part_rules).size()
 	if gone > 0:
 		lines.append("Missing parts  %d (kept in the save)" % gone)

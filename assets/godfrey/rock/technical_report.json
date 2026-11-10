@@ -1,0 +1,29 @@
+{
+  "asset_id": "godfrey_rock_01",
+  "blender_version": "5.2.2 LTS",
+  "dimensions_blender_m": [
+    2.0944976806640625,
+    1.5890697240829468,
+    1.6750000715255737
+  ],
+  "triangles": 960,
+  "vertices": 482,
+  "material_count": 3,
+  "texture_count": 0,
+  "proposed_triangle_budget": [
+    100,
+    2000
+  ],
+  "source": "rock.blend",
+  "export": "rock.glb",
+  "reference": "reference_cc0.jpg",
+  "rendered_views": [
+    "gray_front.png",
+    "gray_side.png",
+    "gray_three_quarter.png",
+    "material_front.png",
+    "material_side.png",
+    "material_three_quarter.png",
+    "material_gameplay.png"
+  ]
+}

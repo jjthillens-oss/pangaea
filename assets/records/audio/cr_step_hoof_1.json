@@ -1,0 +1,22 @@
+{
+  "id": "cr_step_hoof_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 creature and Aquatic stages, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/cr_step_hoof_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "cr_step_hoof",
+  "variant": 1,
+  "purpose": "A hoof steps: a hollow knock and a click. Positional.",
+  "visual_equivalent": "The hoof plants with a puff of dust",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.3,
+  "recipe": "game/scenes/audio/stage_synth.gd StageSynth._stage_sfx(\"cr_step_hoof\", 0)"
+}

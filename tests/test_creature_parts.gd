@@ -218,3 +218,49 @@ func test_every_part_winds_its_faces_to_match_their_normals() -> void:
 						agree += 1
 		check(total > 0 and agree >= total * 0.98, "%s: %d of %d faces wind with their normals" % [id, agree, total])
 		node.free()
+
+
+## Every handle at 1000 keeps the part rooted (contract section 1: the pivot is on the skin, the root below it):
+## the part still reaches below the skin (a ground part still reaches down to its sole; toes may curl below it, as
+## the primate foot's H3_Grasp does), and the vertices sunk
+## deeper than half the sink depth at rest stay under the skin, so no handle lifts the root off the body (the
+## dragon wing's H1_Fold once lifted its root 6 cm at scale 1000). Imported blend shapes hold absolute positions
+## (BLEND_SHAPE_MODE_NORMALIZED); a mesh without the handle's key stays at rest.
+func test_every_handle_at_full_keeps_the_part_on_the_skin() -> void:
+	for record in _records():
+		var id: String = record.get("id", "?")
+		var rules: Dictionary = record.get("part_rules", {})
+		var node := _load_scene(id)
+		if node == null:
+			continue
+		var ground: bool = rules.get("orientation", "") == "ground"
+		var sink: float = rules.get("sink_depth_m", 0.0)
+		for handle in rules.get("handles", []):
+			var key := String(handle.get("key", ""))
+			var low := INF
+			var lifted := -INF
+			for mi in _mesh_instances(node):
+				var t := _relative(mi, node)
+				var mesh := mi.mesh as ArrayMesh
+				var k := -1
+				for i in mesh.get_blend_shape_count():
+					if String(mesh.get_blend_shape_name(i)) == key:
+						k = i
+				check(k < 0 or mesh.blend_shape_mode == Mesh.BLEND_SHAPE_MODE_NORMALIZED, "%s: %s blend shapes are absolute" % [id, mi.name])
+				for s in mesh.get_surface_count():
+					var rest: PackedVector3Array = mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]
+					var full := rest
+					if k >= 0:
+						full = mesh.surface_get_blend_shape_arrays(s)[k][Mesh.ARRAY_VERTEX]
+					for i in rest.size():
+						var r := t * rest[i]
+						var f := t * full[i]
+						low = minf(low, f.y)
+						if not ground and r.y < -0.5 * sink:
+							lifted = maxf(lifted, f.y)
+			if ground:
+				check(low <= 0.004 + TOLERANCE_M, "%s: at %s 1000 the sole still reaches the pivot (y min %.4f)" % [id, key, low])
+			else:
+				check(low <= TOLERANCE_M, "%s: at %s 1000 it still reaches below the skin (y min %.4f)" % [id, key, low])
+				check(lifted <= TOLERANCE_M, "%s: at %s 1000 the root stays under the skin (sunk vertices rise to y %.4f)" % [id, key, lifted])
+		node.free()

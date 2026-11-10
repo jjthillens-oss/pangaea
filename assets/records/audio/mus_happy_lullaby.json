@@ -1,0 +1,27 @@
+{
+  "id": "mus_happy_lullaby",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_happy_lullaby.mp3",
+  "purpose": "Bells and arpeggios, playful and light, looped: an editor track.",
+  "role": "editor",
+  "bus": "Music",
+  "loop": true,
+  "length_s": 39.56,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Happy Lullaby (song17)",
+      "author": "cynicmusic",
+      "url": "https://opengameart.org/content/happy-lullaby-song17",
+      "download": "https://opengameart.org/sites/default/files/song17.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2013-12-15"
+    }
+  ]
+}

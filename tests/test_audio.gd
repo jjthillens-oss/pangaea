@@ -192,16 +192,41 @@ func test_the_music_follows_the_mood() -> void:
 
 func test_every_music_track_is_a_recorded_cc0_file() -> void:
 	var records := _records()
-	var tracks := Array(Soundtrack.CALM_TRACKS) + [Soundtrack.TITLE_TRACK, Soundtrack.DANGER_TRACK]
+	var tracks := [Soundtrack.TITLE_TRACK] + Array(Soundtrack.EDITOR_TRACKS)
+	for stage in Soundtrack.STAGES:
+		tracks += Array(Soundtrack.STAGES[stage].calm) + [Soundtrack.STAGES[stage].danger]
 	for file: String in tracks:
 		var id := file.get_basename()
 		check(load("%s/%s" % [Soundtrack.MUSIC_DIR, file]) is AudioStream, "%s loads" % file)
 		check(records.has(id) and records[id].get("category") == "music", "%s has a music record" % file)
 		if records.has(id):
 			check_eq(records[id].export_path, "assets/audio/music/" + file, "%s's record names it" % id)
+		check(Soundtrack.TRACK_GAIN_DB.has(file), "%s has its level" % file)
 	for id in records:
 		if records[id].get("category") == "music":
 			check(String(records[id].export_path).get_file() in tracks, "%s is used by the soundtrack" % id)
+
+
+func test_each_stage_has_its_music_and_the_editor_its_own() -> void:
+	check_eq(Soundtrack.STAGES.keys(), ["cell", "aquatic", "creature"], "the stages with music")
+	for stage in Soundtrack.STAGES:
+		check(Soundtrack.STAGES[stage].calm.size() >= 3, "%s has a calm playlist" % stage)
+	var music := Soundtrack.new()
+	check_eq(music.stage, "cell", "starts on the cell stage")
+	music.set_stage("creature")
+	check_eq(music.calm_tracks(), PackedStringArray(Soundtrack.STAGES.creature.calm), "the creature stage's playlist")
+	music.set_stage("no such stage")
+	check_eq(music.stage, "creature", "unknown stages are ignored")
+	music.set_mood("danger")
+	music.set_paused(true)
+	music.set_editor(true)
+	check(music.target_db("editor") >= -1.0, "an editor brings its track in")
+	for layer in ["title", "calm", "danger"]:
+		check(music.target_db(layer) <= -79.0, "%s is silent under the editor" % layer)
+	check_eq(music.target_cutoff_hz(), 20000.0, "the editor's music is open though the stage is paused")
+	music.set_editor(false)
+	check(music.target_db("danger") >= -1.0 and music.target_db("editor") <= -79.0, "closing it brings the stage back")
+	music.free()
 
 
 func test_menu_buttons_pick_their_sound() -> void:
