@@ -1,0 +1,103 @@
+{
+  "id": "cpart_feather_fan",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature display part (PROPOSED): a fan of seven long feathers leaning back toward the tail, each with a gold eye-spot band near its tip, from a small skin pad.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_feather_fan.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_feather_fan.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.34,
+    "y_forward": 0.114,
+    "z_up": 0.213
+  },
+  "triangles": 972,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartFeatherFan_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartFeatherFan_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFeatherFan_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_FeatherFanBase",
+    "M_FeatherFanSpot",
+    "M_FeatherFanVane"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "FeatherFan"
+  ],
+  "part_type": "feather_fan",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "feather_fan",
+    "footprint_radius_m": 0.134,
+    "sink_depth_m": 0.015,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 45,
+    "tilt_limit_deg": 40,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "detail",
+    "handles": [
+      {
+        "key": "H1_Spread",
+        "meaning": "the fan opens 30% wider",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Length",
+        "meaning": "the feathers 30% longer",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_FeatherFanVane": 0.9,
+    "M_FeatherFanSpot": 0.0,
+    "M_FeatherFanBase": 0.9
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0005,
+    "triangles_before": 1648,
+    "triangles_after": 972
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

@@ -77,6 +77,27 @@ func test_parts_ride_along() -> void:
 	check(ok, "after the head is thickened by half, the eyes move with the skin and stay on it")
 
 
+## A mouth on the snout points its out axis (+Y, where the art's geometry runs) ahead, within the forward cone of the
+## head direction, and keeps its upper side (-Z) up: the frame the art contract's parts are authored in. (Before
+## 2026-11-10 the frame put the look direction on -Z, so every jaw stood on end.)
+func test_a_forward_cone_part_points_out_along_the_head_with_its_top_up() -> void:
+	for preset_name in ["raptor", "boar", "strider"]:
+		var desc = CreatureData.preset_body(preset_name)
+		var field = BodyField.from_description(desc)
+		var head: Vector3 = (desc.position_m(0) - desc.position_m(1)).normalized()
+		var seen := 0
+		for e in AnchorResolver.resolve_all(desc, field, orient):
+			var part: Dictionary = desc.parts.filter(func(x): return x["id"] == e["part"])[0]
+			if orient.get(part["type"], "normal") != "forward_cone" or int(part["u"]) != 0:
+				continue
+			seen += 1
+			var b: Basis = (e["transform"] as Transform3D).basis.orthonormalized()
+			var cone := deg_to_rad(AnchorResolver.FORWARD_CONE_DEG + float(part["tilt"]) + 1.0)
+			check(b.y.angle_to(head) <= cone, "%s %s points out within the cone of the head direction" % [preset_name, part["type"]])
+			check((-b.z).y > 0.0, "%s %s keeps its upper side up" % [preset_name, part["type"]])
+		check(seen > 0, "%s has a mouth on its snout" % preset_name)
+
+
 func test_mirrored_transform_is_the_reflection_across_x() -> void:
 	var t := Transform3D(Basis(Vector3(0.3, 1.2, -0.4).normalized(), 0.7), Vector3(0.25, 0.1, -0.5))
 	var m: Transform3D = AnchorResolver.mirrored(t)

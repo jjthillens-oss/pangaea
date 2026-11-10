@@ -1388,7 +1388,7 @@ def build_eye_turret():
     handles = cp._shape_keys(cone, [("H1_Blink", blink, "the aperture drawn shut over the pupil"),
                                     ("H2_Reach", reach, "the turret about 2.2 cm taller, reaching further out")])
     cp._shape_keys(ball, [("H2_Reach", lambda co: co + Vector((0.0, 0.0, 0.022)), "")])
-    rules = _rules("eye_turret", round(foot + 0.001, 3), TURRET_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye_turret", round(foot + 0.001, 3), TURRET_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = ("H1_Blink is on EyeTurretCone; H2_Reach is on EyeTurretCone and the ball EyeTurret with "
                              "the same name: the cone stretches and the ball rides up inside it by the same 2.2 cm.")
@@ -1535,7 +1535,7 @@ def build_eye_lashed():
                                                                 "ball to meet the lower lid, which rises a little")])
     cp._shape_keys(lashes, [("H1_Blink", lambda co: _lashed_blink(co, rigid=True), "")])
     handles += cp._shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 20% further out")])
-    rules = _rules("eye_lashed", round(foot + 0.001, 3), LASHED_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules = _rules("eye_lashed", round(foot + 0.001, 3), LASHED_SINK, "normal", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = ("H1_Blink is on EyeLashedLid and EyeLashedLashes with the same name (the upper lid and "
                              "its lashes swing down together on a hinge through the eye's corners); H2_Bulge is on "

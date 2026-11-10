@@ -28,6 +28,33 @@
 				}
 			]
 		},
+		"antler": {
+			"type": "antler",
+			"footprint_radius_m": 0.027,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the antler 30% bigger",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "the beam leans further out to the side",
+					"default_permille": 0
+				}
+			]
+		},
 		"antler_branched": {
 			"type": "antler_branched",
 			"footprint_radius_m": 0.023,
@@ -89,12 +116,39 @@
 			],
 			"handles_note": "The keys are on AntlerPalmate (beam, palm and points); the pedicle (AntlerPalmatePedicle) stays put under the burr."
 		},
+		"back_plate": {
+			"type": "back_plate",
+			"footprint_radius_m": 0.054,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Height",
+					"meaning": "the plate 40% taller",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Sweep",
+					"meaning": "the plate raked back toward the tail",
+					"default_permille": 0
+				}
+			]
+		},
 		"barbels": {
 			"type": "barbels",
 			"footprint_radius_m": 0.163,
 			"sink_depth_m": 0.015,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 40,
 			"tilt_limit_deg": 30,
 			"centerline": "required",
@@ -350,7 +404,7 @@
 			"footprint_radius_m": 0.054,
 			"sink_depth_m": 0.015,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 70,
 			"tilt_limit_deg": 50,
 			"centerline": "allowed",
@@ -426,6 +480,33 @@
 				}
 			]
 		},
+		"ear_long": {
+			"type": "ear_long",
+			"footprint_radius_m": 0.029,
+			"sink_depth_m": 0.012,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the ear 35% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Flop",
+					"meaning": "the upper half folds forward and down",
+					"default_permille": 0
+				}
+			]
+		},
 		"ear_pointed": {
 			"type": "ear_pointed",
 			"footprint_radius_m": 0.032,
@@ -484,7 +565,7 @@
 			"footprint_radius_m": 0.062,
 			"sink_depth_m": 0.03,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -507,12 +588,73 @@
 			],
 			"handles_note": "H1 is on Lid, H2 on Eye; both are 0 to 1000 per mille."
 		},
+		"eye_beady": {
+			"type": "eye_beady",
+			"footprint_radius_m": 0.04,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the lid rolls over the ball to a slit",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 25% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lid, H2 on EyeBeady; all are 0 to 1000 per mille."
+		},
+		"eye_brow": {
+			"type": "eye_brow",
+			"footprint_radius_m": 0.08,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the lid rolls over the ball to a slit",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 25% further out",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Scowl",
+					"meaning": "the ridge's front end drops further over the eye",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lid, H2 on EyeBrow, H3 on Brow; all are 0 to 1000 per mille."
+		},
 		"eye_bulge": {
 			"type": "eye_bulge",
 			"footprint_radius_m": 0.066,
 			"sink_depth_m": 0.025,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -540,7 +682,7 @@
 			"footprint_radius_m": 0.051,
 			"sink_depth_m": 0.015,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -563,12 +705,40 @@
 			],
 			"handles_note": "Both handles are on Eyes; the pad stays put."
 		},
+		"eye_goat": {
+			"type": "eye_goat",
+			"footprint_radius_m": 0.066,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the lid rolls over the ball to a slit",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 25% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lid, H2 on EyeGoat; all are 0 to 1000 per mille."
+		},
 		"eye_lashed": {
 			"type": "eye_lashed",
 			"footprint_radius_m": 0.057,
 			"sink_depth_m": 0.03,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -596,7 +766,7 @@
 			"footprint_radius_m": 0.081,
 			"sink_depth_m": 0.035,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -624,7 +794,7 @@
 			"footprint_radius_m": 0.056,
 			"sink_depth_m": 0.03,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -680,7 +850,7 @@
 			"footprint_radius_m": 0.043,
 			"sink_depth_m": 0.025,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 60,
 			"tilt_limit_deg": 45,
 			"centerline": "allowed",
@@ -702,6 +872,33 @@
 				}
 			],
 			"handles_note": "H1_Blink is on EyeTurretCone; H2_Reach is on EyeTurretCone and the ball EyeTurret with the same name: the cone stretches and the ball rides up inside it by the same 2.2 cm."
+		},
+		"feather_fan": {
+			"type": "feather_fan",
+			"footprint_radius_m": 0.134,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 45,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "the fan opens 30% wider",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "the feathers 30% longer",
+					"default_permille": 0
+				}
+			]
 		},
 		"fin": {
 			"type": "fin",
@@ -1515,6 +1712,33 @@
 			],
 			"handles_note": "H1_Open is on all four meshes (MouthFangsLower drops on its hinge, MouthFangs lifts 5 degrees, MouthFangsFangs swing forward about 55 degrees from their roots, MouthFangsTongue drops with the lower jaw); H2_Tongue is on MouthFangsTongue only."
 		},
+		"mouth_grin": {
+			"type": "mouth_grin",
+			"footprint_radius_m": 0.087,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower lip and teeth drop 0.03 m in the middle, the corners less",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Wide",
+					"meaning": "the grin 25% wider",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lower, H2 on MouthGrin and Lower."
+		},
 		"mouth_sucker": {
 			"type": "mouth_sucker",
 			"footprint_radius_m": 0.034,
@@ -1541,6 +1765,86 @@
 				}
 			],
 			"handles_note": "Both keys are on MouthSucker, MouthSuckerDisc and MouthSuckerTeeth with the same names; the runtime sets them together. Each tooth rides rigidly with the point of the disc it is rooted on."
+		},
+		"mouth_tendrils": {
+			"type": "mouth_tendrils",
+			"footprint_radius_m": 0.044,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the tendrils hang 40% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Splay",
+					"meaning": "the tendrils spread out and forward",
+					"default_permille": 0
+				}
+			]
+		},
+		"muzzle_fang": {
+			"type": "muzzle_fang",
+			"footprint_radius_m": 0.064,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower jaw drops 30 degrees about the hinge",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Fangs",
+					"meaning": "the two sabre fangs 50% longer",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lower, H2 on MuzzleFang."
+		},
+		"muzzle_grazer": {
+			"type": "muzzle_grazer",
+			"footprint_radius_m": 0.065,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower jaw drops 24 degrees about the hinge",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "the muzzle 30% longer",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lower, H2 on MuzzleGrazer and Lower."
 		},
 		"muzzle_primate": {
 			"type": "muzzle_primate",
@@ -1574,7 +1878,7 @@
 			"footprint_radius_m": 0.028,
 			"sink_depth_m": 0.03,
 			"chiral": false,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 40,
 			"tilt_limit_deg": 30,
 			"centerline": "required",
@@ -1732,6 +2036,34 @@
 			],
 			"placement_note": "Meant for the tail cap (spine_u = 1); the pairs splay across the body's x."
 		},
+		"tail_stinger": {
+			"type": "tail_stinger",
+			"footprint_radius_m": 0.028,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 15,
+			"tilt_limit_deg": 20,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Size",
+					"meaning": "the venom bulb and barb 30% bigger",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Barb",
+					"meaning": "the barb 50% longer",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on TailStinger and Barb, H2 on Barb.",
+			"placement_note": "Meant for the tail cap (spine_u = 1)."
+		},
 		"throat_sac": {
 			"type": "throat_sac",
 			"footprint_radius_m": 0.047,
@@ -1826,7 +2158,7 @@
 			"footprint_radius_m": 0.051,
 			"sink_depth_m": 0.025,
 			"chiral": true,
-			"orientation": "forward_cone",
+			"orientation": "normal",
 			"turn_limit_deg": 40,
 			"tilt_limit_deg": 30,
 			"centerline": "forbidden",

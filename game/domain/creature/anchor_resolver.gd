@@ -126,8 +126,11 @@ static func _frame(up: Vector3, forward: Vector3) -> Basis:
 	return Basis(x, y, x.cross(y))
 
 
-## A forward-cone part looks (-Z) along `head`, turned towards the skin normal by at most FORWARD_CONE_DEG, and keeps
-## body up as its up, so an eye on the side of the head looks forward and out, and a beak on the snout points ahead.
+## A forward-cone part (a mouth) points its out axis (+Y, the art contract's skin normal) along `head`, turned towards
+## the skin normal by at most FORWARD_CONE_DEG, and keeps its forward (-Z, the upper jaw's side) as close to body up
+## as that allows, so a jaw on the snout points ahead with its upper jaw on top wherever on the snout it sits. (Until
+## 2026-11-10 the look direction went to -Z and body up to +Y, which stood every mouth and eye on end: the art is
+## authored out along +Y.)
 static func _cone_frame(normal: Vector3, head: Vector3) -> Basis:
 	var h := head.normalized()
 	var n := normal.normalized()
@@ -136,13 +139,7 @@ static func _cone_frame(normal: Vector3, head: Vector3) -> Basis:
 	if angle > 1e-4:
 		var axis := h.cross(n)
 		look = h.rotated(axis.normalized(), minf(angle, deg_to_rad(FORWARD_CONE_DEG))) if axis.length_squared() > 1e-10 else n
-	var z := -look
-	var up := Vector3.UP - z * Vector3.UP.dot(z)
-	if up.length_squared() < 1e-8:
-		up = Vector3.BACK - z * z.z
-	var y := up.normalized()
-	var x := y.cross(z).normalized()
-	return Basis(x, z.cross(x), z)
+	return _frame(look, Vector3.UP)
 
 
 ## Point at arc fraction u along a joint line: {point, tangent (towards the line's end), segment, t}.
