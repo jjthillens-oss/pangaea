@@ -84,8 +84,14 @@ func _run() -> void:
 	if stage.hud.card.visible:
 		stage.hud.card.visible = false
 
-	# The sea to the land.
+	# The sea to the land. Without lobe fins the crossing is refused and nothing moves.
 	var sim := stage.sim
+	var refused := main.crawl_out_of_the_sea()
+	await _frames(SETTLE_FRAMES)
+	_check(not bool(refused.ok) and main.aquatic_stage == stage and String(_slot_data(slot).get("era")) == "aquatic"
+			and not EraTransition.has_checkpoint(slot, "terrestrial"), "a fish that cannot crawl is not carried ashore")
+	if main.alert != null and main.alert.has_method(&"close"):
+		main.alert.call(&"close")
 	var crawler: Dictionary = (sim.player.body as Dictionary).duplicate()
 	crawler["limbs"] = int(stage.rules.body.crawl_limbs)
 	sim.points = 20

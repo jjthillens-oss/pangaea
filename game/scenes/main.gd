@@ -440,6 +440,11 @@ func crawl_out_of_the_sea() -> Dictionary:
 	if save.era == ShoreLink.FROM_ERA:
 		save.era = ShoreLink.TO_ERA
 	var fish: Dictionary = save.aquatic.get("body", aquatic_stage.sim.player.body if aquatic_stage != null else {})
+	# The transition contract's capability (Bible section 4): only a body that can crawl leaves the water, whoever asks.
+	if fish.is_empty() or not bool(AquaticBody.stats(fish, AquaticLineage.rules().body).can_crawl):
+		var why := PackedStringArray(["Your line needs strong lobe fins to crawl ashore: evolve them at the nest."])
+		_alert("Could not go ashore", why)
+		return {"ok": false, "errors": why}
 	var result := EraTransition.cross(save, session.slot, session.persistence,
 			{"creature": AquaticLineage.to_creature(fish, save.genome)})
 	if not result.ok:
