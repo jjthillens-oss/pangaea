@@ -24,7 +24,10 @@
 	"strength": {"ref_kg": 60, "mass_power": 0.667, "min": 0.25, "max": 6.0, "_note": "bite x (mass / ref_kg)^(2/3)"},
 	"social": {"reach_m": 3.0, "cooldown_s": 1.0, "base_charm": 1.0, "per_display_part": 0.5, "display_cap": 4,
 		"friend_at": 5.0, "befriend_points": 10, "follow_m": 5.0,
-		"_note": "sing and dance to befriend: each song adds the singer's charm; display organs (crest, frill, lure...) add charm, capped; a bitten creature will not listen"},
+		"per_ally_charm": 0.5, "ally_cap": 3, "pack_m": 10.0,
+		"_note": "sing and dance to befriend: each song adds the singer's charm; display organs (crest, frill, lure...) add charm, capped; a bitten creature will not listen; each ally within pack_m joins the display and adds per_ally_charm, the first ally_cap of them"},
+	"hunger": {"empty_s": 240, "starve_damage_per_s": 1.0,
+		"_note": "the player's fullness drains from full to empty in empty_s; fruit adds 0.25 and meat 0.5 (CreatureWorldSim); while empty the health regen stops and the body loses starve_damage_per_s; issue #206"},
 	"deeds": {"walk_m_per_point": 25, "bite_points": 2, "hit_points": 1, "spot_points": 2,
 		"_note": "adaptation points earned by doing, on top of eating; spent in the editor (Bible section 3)"},
 	"pickups": {
