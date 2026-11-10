@@ -34,7 +34,9 @@ func _gap(sim: Sim) -> float:
 
 
 func _sing_once(sim: Sim) -> Array:
-	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "social": true})
+	# Answer with the display the rival asks for (the copy-the-move mini-game).
+	var wants := sim.wanted_display(sim.rivals[0])
+	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "display": wants})
 	for t in int(ceil(float(tuning["social"]["cooldown_s"]) * 60.0)):
 		events.append_array(sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "social": false}))
 		var r: Dictionary = sim.rivals[0]
@@ -115,3 +117,48 @@ func test_display_organs_add_charm_up_to_a_cap() -> void:
 			* mini(displays, int(social["display_cap"]))), "charm = base + per display organ, capped")
 	check(float(social["base_charm"]) + float(social["per_display_part"]) * int(social["display_cap"])
 			< float(social["friend_at"]), "no body befriends in one song")
+
+
+func test_a_rival_asks_for_one_display_and_a_wrong_one_makes_no_progress() -> void:
+	var sim := _face_to_face()
+	var r: Dictionary = sim.rivals[0]
+	var wants := sim.wanted_display(r)
+	check(Sim.DISPLAYS.has(wants), "it asks for one of the four displays (%s)" % wants)
+	check_eq(sim.wanted_display(r), wants, "asking is stable: no draw from the sim's stream")
+	var target := sim.social_target()
+	check_eq(String(target.get("who", "")), String(r["id"]), "the HUD's target is the rival in front")
+	check_eq(String(target.get("wants", "")), wants, "and names what it wants")
+	var wrong: String = Sim.DISPLAYS[(Sim.DISPLAYS.find(wants) + 1) % Sim.DISPLAYS.size()]
+	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "display": wrong})
+	var missed := events.filter(func(e): return e["kind"] == "missed")
+	check_eq(missed.size(), 1, "a wrong display is a miss")
+	if missed.size() == 1:
+		check_eq(String(missed[0]["wanted"]), wants, "the miss says what it wanted")
+	check_eq(float(r["friendship"]), 0.0, "no progress on a miss")
+
+
+func test_allies_close_by_join_the_display_and_add_charm() -> void:
+	var alone := _face_to_face()
+	alone.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "display": alone.wanted_display(alone.rivals[0])})
+	var solo := float(alone.rivals[0]["friendship"])
+	var sim := _face_to_face()
+	var ally: Dictionary = sim.rivals[1]
+	ally["ally"] = true
+	sim._place(ally, sim.me["position"] + Vector3(0.0, 0.0, 4.0))
+	var events: Array = sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false, "display": sim.wanted_display(sim.rivals[0])})
+	var charmed := events.filter(func(e): return e["kind"] == "charmed")
+	check_eq(charmed.size(), 1, "the display lands")
+	if charmed.size() == 1:
+		check_eq(charmed[0]["pack"], [ally["id"]], "the ally close by joins in")
+	check(is_equal_approx(float(sim.rivals[0]["friendship"]), solo + float(tuning["social"]["per_ally_charm"])),
+			"and adds its share of charm (%f against %f alone)" % [float(sim.rivals[0]["friendship"]), solo])
+
+
+func test_every_display_cue_renders_a_sound() -> void:
+	var audio_script: GDScript = load("res://game/scenes/audio/creature_display_audio.gd")
+	for cue: String in audio_script.CUES:
+		var samples: PackedFloat32Array = audio_script.render(cue)
+		var peak := 0.0
+		for v in samples:
+			peak = maxf(peak, absf(v))
+		check(samples.size() > 1000 and peak > 0.3 and peak <= 1.0, "%s renders (%d samples, peak %.2f)" % [cue, samples.size(), peak])
