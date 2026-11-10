@@ -30,5 +30,10 @@
 		"height": [600, 1600],
 		"jaw": [0, 1000],
 		"brow": [0, 1000]
+	},
+	"skin_colour": {
+		"note": "PROPOSED limits for a typed skin colour (domain/creature/colour_rules.gd, IB-33; the Bible section 15 saturation discipline), HSV per mille: [min, max]. The eight swatches sit inside them.",
+		"saturation": [0, 850],
+		"value": [180, 950]
 	}
 }

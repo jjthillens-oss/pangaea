@@ -46,6 +46,7 @@ const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 const GaitPlanner := preload("res://game/domain/creature/gait_planner.gd")
 const SkinWorker := preload("res://game/scenes/creature/creature_editor_skin_worker.gd")
 const PartIcons := preload("res://game/scenes/creature/part_icons.gd")
+const ColourRules := preload("res://game/domain/creature/colour_rules.gd")
 const WorldRules := preload("res://game/domain/creature/creature_world_rules.gd")
 ## The STATS track's anatomy-to-play numbers (CreatureStats, pure); shown when its file is present.
 const STATS_PATH := "res://game/domain/creature/creature_stats.gd"
@@ -180,6 +181,7 @@ func _wire() -> void:
 	hud.test_drive_toggled.connect(func(on: bool): test_drive(on))
 	hud.color_chosen.connect(set_skin_color)
 	hud.covering_chosen.connect(set_skin_covering)
+	hud.hex_entered.connect(func(text: String): set_skin_hex(text))
 	hud.preset_chosen.connect(start_from_preset)
 	hud.random_requested.connect(func(): start_random())
 	hud.head_shape_changed.connect(func(key: String, value: int): set_head_shape(key, value))
@@ -778,6 +780,20 @@ func set_skin_color(color: Color) -> void:
 		rig.use_skin_shader(_shader_params())
 	if walker:
 		walker.body.use_skin_shader(_shader_params())
+
+
+## The skin colour from typed hex (IB-33, PROPOSED): "#RRGGBB" or "#RGB", held inside the body rules' saturation
+## and value limits (ColourRules), then set as a swatch is. Text that is not a colour changes nothing and shows why
+## under the field. Returns ColourRules.resolve_hex's result.
+func set_skin_hex(text: String) -> Dictionary:
+	var r: Dictionary = ColourRules.resolve_hex(text, rules)
+	if not r["ok"]:
+		hud.set_hex_hint(String(r["error"]), true)
+		return r
+	set_skin_color(r["color"])
+	if r["clamped"]:
+		hud.set_hex_hint("Toned to %s to sit with the world's colours" % r["hex"])
+	return r
 
 
 ## The skin covering, from the covering buttons (an index into Look.COVERINGS; out of range is smooth). Like the

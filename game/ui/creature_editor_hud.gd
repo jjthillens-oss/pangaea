@@ -16,6 +16,8 @@ signal test_drive_toggled(on: bool)
 signal color_chosen(color: Color)
 ## A covering button: an index into the covering names setup() was given (creature_look.gd COVERINGS).
 signal covering_chosen(covering: int)
+## The hex field was submitted (Enter, or leaving the field with new text): the text as typed.
+signal hex_entered(text: String)
 signal preset_chosen(preset_name: String)
 ## The "Random creature" button beside the presets.
 signal random_requested
@@ -76,6 +78,11 @@ var tools_grid: GridContainer
 var swatch_row: HBoxContainer
 ## The covering toggles, built by setup() under its own caption after the swatches.
 var covering_row: HBoxContainer
+## The exact colour entry (IB-33), built by setup() between the caption and the swatches: the field and its hint.
+var hex_field: LineEdit
+var hex_hint: Label
+var _hex_shown := ""
+var _hex_sent := ""   ## the last text handed to hex_entered, so leaving the field does not send it twice
 var points_text: Label
 var cost_text: Label
 var stats_text: Label
@@ -162,6 +169,7 @@ func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {
 		b.pressed.connect(func(): color_chosen.emit(color))
 		swatch_row.add_child(b)
 		_swatches.append(b)
+	_build_hex_entry()
 	_build_coverings(coverings)
 
 
@@ -287,6 +295,52 @@ func set_tool(type: String) -> void:
 func set_color(color: Color) -> void:
 	for b in _swatches:
 		b.set_pressed_no_signal(b.tooltip_text == color.to_html(false))
+	if hex_field != null:
+		_hex_shown = "#" + color.to_html(false).to_upper()
+		hex_field.text = _hex_shown
+		_hex_sent = _hex_shown
+		set_hex_hint("")
+
+
+## The line under the hex field: a refusal (`warn`) or a note that the colour was toned down; empty hides it.
+func set_hex_hint(text: String, warn: bool = false) -> void:
+	if hex_hint == null:
+		return
+	hex_hint.text = text
+	hex_hint.visible = text != ""
+	hex_hint.theme_type_variation = &"WarnLabel" if warn else &"SmallLabel"
+
+
+## The hex field and its hint line, placed above the swatches once. The field takes focus only by a click and gives
+## it back on Enter, so the editor's keys work again.
+func _build_hex_entry() -> void:
+	if hex_field != null:
+		return
+	var box := swatch_row.get_parent()
+	hex_field = LineEdit.new()
+	hex_field.name = "HexField"
+	hex_field.placeholder_text = "#RRGGBB"
+	hex_field.max_length = 9
+	hex_field.focus_mode = Control.FOCUS_CLICK
+	hex_field.select_all_on_focus = true
+	hex_field.tooltip_text = "Type an exact skin colour as hex, then press Enter"
+	hex_field.text_submitted.connect(func(text: String):
+		_hex_sent = text
+		hex_entered.emit(text)
+		hex_field.release_focus())
+	hex_field.focus_exited.connect(func():
+		if hex_field.text != _hex_shown and hex_field.text != _hex_sent:
+			_hex_sent = hex_field.text
+			hex_entered.emit(hex_field.text))
+	hex_hint = Label.new()
+	hex_hint.name = "HexHint"
+	hex_hint.theme_type_variation = &"SmallLabel"
+	hex_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hex_hint.visible = false
+	box.add_child(hex_field)
+	box.add_child(hex_hint)
+	box.move_child(hex_field, swatch_row.get_index())
+	box.move_child(hex_hint, swatch_row.get_index())
 
 
 ## Shows covering `index` as the pressed toggle without emitting covering_chosen.

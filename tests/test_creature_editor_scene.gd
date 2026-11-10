@@ -152,6 +152,28 @@ func test_the_skin_colour_rides_in_the_body() -> void:
 	check(editor.undo() == false, "a colour is not an undo step")
 
 
+func test_a_typed_hex_sets_the_skin_colour_inside_the_limits() -> void:
+	open()
+	var r: Dictionary = editor.set_skin_hex(" #a86fd6 ")
+	check(r["ok"] and not r["clamped"], "a swatch-like colour is taken as typed")
+	check_eq(String(editor.working_body().extra.get("skin_color", "")), "a86fd6", "the working body carries it, as a swatch's")
+	check_eq(editor.hud.hex_field.text, "#A86FD6", "the field shows it tidied")
+	check(not editor.hud.hex_hint.visible, "no hint")
+	r = editor.set_skin_hex("zzz")
+	check(not r["ok"] and editor.hud.hex_hint.visible and editor.hud.hex_hint.text == r["error"], "bad text shows why")
+	check_eq(String(editor.working_body().extra.get("skin_color", "")), "a86fd6", "and changes nothing")
+	editor.hud.hex_field.text = "#ff0000"
+	editor.hud.hex_field.text_submitted.emit("#ff0000")
+	var stored := String(editor.working_body().extra.get("skin_color", ""))
+	check(stored != "ff0000" and stored != "a86fd6" and stored == editor.skin_color.to_html(false), "pure red is toned down (%s)" % stored)
+	check(editor.skin_color.s <= 0.86 and editor.skin_color.v <= 0.96, "inside the saturation discipline")
+	check(editor.hud.hex_hint.visible and editor.hud.hex_field.text == "#" + stored.to_upper(), "the field and a note say so")
+	check(editor.undo() == false, "like a swatch, a typed colour is not an undo step")
+	(editor.hud.swatch_row.get_child(1) as Button).pressed.emit()
+	check_eq(editor.hud.hex_field.text, "#4FC08A", "picking a swatch updates the field")
+	check(not editor.hud.hex_hint.visible, "and clears the note")
+
+
 func test_the_skin_covering_rides_in_the_body_and_reaches_the_shader() -> void:
 	open()
 	var Look = load("res://game/scenes/creature/creature_look.gd")
