@@ -132,3 +132,18 @@ func test_the_editor_row_steps_the_body_shows_the_tier_and_refits_the_camera() -
 	editor.undo()
 	editor._rebuild()
 	check(editor.session.body_size_mm() < int(size_rules["max_mm"]), "undo steps back")
+
+
+func test_parts_keep_their_proportion_when_the_body_changes_size() -> void:
+	var s: RefCounted = Session.new(CreatureData.body("quadruped"), CreatureData.rules(), CreatureData.part_rules(),
+			CreatureData.editor_costs(), 100)
+	check(not s.working.parts.is_empty(), "the preset carries parts")
+	var mm: int = s.body_size_mm()
+	var before: Array = s.working.parts.map(func(p): return int(p["scale"]))
+	check(s.set_body_size(mm * 2, 100, 8000)["ok"], "twice the size")
+	for i in before.size():
+		check_eq(int(s.working.parts[i]["scale"]), mini(before[i] * 2, int(CreatureData.rules()["part_scale_max"])),
+				"part %d doubles with the body" % i)
+	check_eq(s.cost(), 0, "size is still free with parts on the body")
+	check(s.undo(), "undo")
+	check_eq(s.working.parts.map(func(p): return int(p["scale"])), before, "undo restores every part's scale")

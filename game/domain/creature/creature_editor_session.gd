@@ -380,14 +380,19 @@ func body_size_mm() -> int:
 
 ## Sets the body's overall scale to `mm`, clamped to `min_mm`..`max_mm` (tuning "body_size"; the caller reads the
 ## data). Positions and radii are per mille of the reference length, so the whole body grows or shrinks in
-## proportion. One undo step; free of points. Refused when already at that size (the clamp's end), and, like every
+## proportion; each part's scale follows by the same ratio, inside the part scale limits. One undo step; free of points. Refused when already at that size (the clamp's end), and, like every
 ## op, when it would add a validation problem. The result carries {length_mm}.
 func set_body_size(mm: int, min_mm: int, max_mm: int) -> Dictionary:
 	var to := clampi(mm, min_mm, max_mm)
 	if to == int(working.reference_length_mm):
 		return _no("The body is already at its %s size." % ("smallest" if to <= min_mm else "largest" if to >= max_mm else "set"))
+	var from := int(working.reference_length_mm)
 	return _apply(func(d):
 		d.reference_length_mm = to
+		# Part meshes are sized in metres, not per mille of the body, so they are scaled along to keep their proportion.
+		for part in d.parts:
+			part["scale"] = clampi(roundi(float(int(part["scale"]) * to) / float(from)), int(rules["part_scale_min"]),
+					int(rules["part_scale_max"]))
 		return {"length_mm": to})
 
 
