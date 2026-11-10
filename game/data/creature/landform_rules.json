@@ -1,0 +1,17 @@
+{
+	"note": "PROPOSED tuning for IB-32 authored terrain variety (docs/research/innovation-backlog.md; Bible sections 15, 16). Read by game/domain/creature/landform_layout.gd, which nothing in the game uses yet: the landform art, the scene placement and the section 15 runtime placement boundary are not approved. The field size and nest match creature_stage.json (field_half_size_m 80, nest at the origin, nest_radius_m 6). Metres and degrees as written.",
+	"schema_version": 1,
+	"field_half_size_m": 80,
+	"edge_margin_m": 2,
+	"nest_pos": [0, 0],
+	"nest_keep_out_m": 14,
+	"gap_m": 4,
+	"max_attempts": 32,
+	"tries_per_piece": 200,
+	"kinds": {
+		"river": {"radius_m": 22, "count": [1, 1], "turn_step_deg": 45},
+		"canyon": {"radius_m": 18, "count": [1, 2], "turn_step_deg": 45},
+		"island": {"radius_m": 12, "count": [1, 2], "turn_step_deg": 30},
+		"plateau": {"radius_m": 16, "count": [1, 2], "turn_step_deg": 90}
+	}
+}

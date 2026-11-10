@@ -12,10 +12,15 @@ extends RefCounted
 ##   the speed curve rises with size, peaks near ref_kg and falls for giants. speed_factor is that multiplier.
 ## - Strength: muscle force grows with its cross-section, mass^(2/3): bite power is scaled by
 ##   (mass / strength.ref_kg)^strength.mass_power. strength_factor is that multiplier.
+## - Size tier (IB-30, PROPOSED; domain/creature/size_tiers.gd): the body's reference length picks a tier of tuning
+##   size_tiers, whose multipliers are applied here and nowhere else: speed_factor (and so speed_mps) takes the tier's
+##   speed, bite_reach_m its bite_reach; energy_use_factor and turn_factor are reported for the world to use. The
+##   middle tier is all ones. Without a "size_tiers" block, all ones and size_tier "".
 
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
 const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
+const SizeTiers := preload("res://game/domain/creature/size_tiers.gd")
 
 ## The part_rules "role" (from each cpart_ record) that makes a part a mouth or an eye.
 const MOUTH_ROLE := "mouth"
@@ -34,14 +39,15 @@ const TOUCH_REACH_M := 0.15
 
 
 ## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, speed_factor,
-## strength_factor, charm, has_mouth, has_legs,
+## strength_factor, size_tier, energy_use_factor, turn_factor, charm, has_mouth, has_legs,
 ## leg_length_m, mouths, eyes, weapons, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
 ## allows (the run band's Froude number on the shortest leg) times speed_factor; the walk is 0.3 of it, as the lab's
 ## drives.
 ## `part_rules` is consulted for which types exist and their role; a part of an unknown type counts for nothing.
 static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted, tuning: Dictionary) -> Dictionary:
 	var mass := mass_kg(body, float(tuning["mass"]["kg_per_m3"]))
-	var speed_k := speed_factor(mass, tuning)
+	var tier: Dictionary = SizeTiers.of_body(body, tuning.get("size_tiers", {}))
+	var speed_k := speed_factor(mass, tuning) * float(tier["speed"])
 	var strength_k := strength_factor(mass, tuning)
 	var mouth_types := types_with_role(part_rules, MOUTH_ROLE)
 	var mouths := count_parts(body, mouth_types, part_rules)
@@ -60,6 +66,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		bite_power *= strength_k
 	var head_radius: float = body.radius_m(0)
 	var reach := head_radius + (REACH_PER_MOUTH_SCALE_M * mouth_scale if mouths > 0 else TOUCH_REACH_M)
+	reach *= float(tier["bite_reach"])
 	var sight: Dictionary = tuning["sight"]
 	var sight_m := minf(float(sight["base_m"]) + float(sight["per_eye_m"]) * eyes, float(sight["max_m"]))
 	var gait := GaitBody.from_description(body)
@@ -90,6 +97,9 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		"cadence_hz": cadence,
 		"speed_factor": speed_k,
 		"strength_factor": strength_k,
+		"size_tier": tier["id"],
+		"energy_use_factor": tier["energy_use"],
+		"turn_factor": tier["turn"],
 		"charm": charm,
 		"has_mouth": mouths > 0,
 		"has_legs": has_legs,

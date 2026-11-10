@@ -167,3 +167,22 @@ func test_the_head_shape_sliders_emit_and_follow_without_emitting() -> void:
 	check_eq((hud.get_node("Stats/Box/HeadShape/Head_snout").get_child(2) as Label).text, "1.75x", "the value label follows")
 	check_eq(CreatureEditorHud.head_value_text("snout", 1750), "1.75x", "scale dials read as a factor")
 	check_eq(CreatureEditorHud.head_value_text("jaw", 600), "60%", "amount dials read as a percentage")
+
+
+func test_the_hex_field_emits_its_text_and_follows_the_colour() -> void:
+	palette()
+	check(hud.hex_field != null and hud.hex_field.get_index() < hud.swatch_row.get_index(), "the hex field sits above the swatches")
+	check(not hud.hex_hint.visible, "no hint to start")
+	var got := []
+	hud.hex_entered.connect(func(text: String): got.append(text))
+	hud.hex_field.text = "#0f0"
+	hud.hex_field.text_submitted.emit("#0f0")
+	check_eq(got, ["#0f0"], "Enter hands the text on once")
+	hud.set_hex_hint("Only 0-9 and A-F", true)
+	check(hud.hex_hint.visible and hud.hex_hint.text == "Only 0-9 and A-F", "the hint shows")
+	hud.set_color(Color.GREEN)
+	check_eq(hud.hex_field.text, "#00FF00", "the field names the colour")
+	check(not hud.hex_hint.visible, "a set colour clears the hint")
+	check_eq(got.size(), 1, "set_color emits nothing")
+	palette()
+	check_eq(hud.swatch_row.get_parent().find_children("HexField*", "LineEdit", false, false).size(), 1, "a second setup adds no second field")

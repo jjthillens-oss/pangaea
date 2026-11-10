@@ -95,8 +95,15 @@ func validate_parts(rules: Dictionary, part_rules: Dictionary) -> PackedStringAr
 		if seen.has(id):
 			out.append("part id %s is used twice" % id)
 		seen[id] = true
+		if String(p["type"]).is_empty():
+			out.append("part %s has no type" % id)
+			continue
+		# A type this build does not know is a missing part, not a broken body (IB-31, PROPOSED): it is kept as a
+		# placeholder and named by part_manifest.gd's warnings. Its anchor is still checked.
 		if not part_rules.has(p["type"]):
-			out.append("part %s has unknown type %s" % [id, p["type"]])
+			if int(p["u"]) < 0 or int(p["u"]) > 1000 or int(p["ring"]) < 0 or int(p["ring"]) > 999 \
+					or int(p["elev"]) < 0 or int(p["elev"]) > 90:
+				out.append("part %s anchor is out of range (u 0..1000, ring 0..999, elev 0..90)" % id)
 			continue
 		var pr: Dictionary = part_rules[p["type"]]
 		var host := String(p["host"])

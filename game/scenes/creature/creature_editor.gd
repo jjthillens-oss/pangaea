@@ -46,10 +46,19 @@ const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 const GaitPlanner := preload("res://game/domain/creature/gait_planner.gd")
 const SkinWorker := preload("res://game/scenes/creature/creature_editor_skin_worker.gd")
 const PartIcons := preload("res://game/scenes/creature/part_icons.gd")
+const ColourRules := preload("res://game/domain/creature/colour_rules.gd")
 const WorldRules := preload("res://game/domain/creature/creature_world_rules.gd")
 ## The STATS track's anatomy-to-play numbers (CreatureStats, pure); shown when its file is present.
 const STATS_PATH := "res://game/domain/creature/creature_stats.gd"
 const STAGE_TUNING_PATH := "res://game/data/creature/creature_stage.json"
+## Body size (IB-30, PROPOSED): the tier names and effect lines the HUD shows; the range when the tuning has none.
+const SizeTiers := preload("res://game/domain/creature/size_tiers.gd")
+const SIZE_TIER_TEXT := {
+	"small": ["Small", "Small: nimble turns, light appetite, shorter bite reach"],
+	"medium": ["Medium", "Medium: balanced reach, turning and appetite"],
+	"large": ["Large", "Large: longer bite reach, slower turns, hungrier"],
+}
+const BODY_SIZE_DEFAULT := {"min_mm": 300, "max_mm": 4000, "step_mm": 300}
 
 const HANDLE_PICK_PX := 16.0
 ## Handles keep one size on screen whatever the zoom: this radius in pixels (at the project's 1080 rows, scaled with
@@ -130,6 +139,7 @@ var _orbit := Vector2(2.05, 0.3)
 var _distance := 2.6
 ## The distance the body was framed at (frame_body), the zoom range's yardstick; 0 before the first framing.
 var _frame_distance := 0.0
+var _framed_length_mm := 0
 ## The longest side of REFERENCE_BODY's bounds (m), measured once.
 var _reference_size_m := 0.0
 ## Whether the "Start from" presets are offered (offer_presets), and the preset the design started from since the
@@ -180,9 +190,11 @@ func _wire() -> void:
 	hud.test_drive_toggled.connect(func(on: bool): test_drive(on))
 	hud.color_chosen.connect(set_skin_color)
 	hud.covering_chosen.connect(set_skin_covering)
+	hud.hex_entered.connect(func(text: String): set_skin_hex(text))
 	hud.preset_chosen.connect(start_from_preset)
 	hud.random_requested.connect(func(): start_random())
 	hud.head_shape_changed.connect(func(key: String, value: int): set_head_shape(key, value))
+	hud.body_size_step.connect(func(direction: int): step_body_size(direction))
 	hud.head_shape_drag.connect(func(started: bool):
 		if started:
 			session.begin_gesture()
@@ -224,6 +236,7 @@ func setup(body: RefCounted, points: int) -> void:
 		roles[type] = String(part_rules[type].get("role", ""))
 	hud.setup(tools, costs, SKIN_COLORS, roles, Look.COVERINGS)
 	hud.setup_head_shape(session.head_shape_ranges())
+	hud.setup_body_size()
 	if _icons == null:
 		_icons = PartIcons.new()
 		_icons.name = "PartIcons"
@@ -235,6 +248,36 @@ func setup(body: RefCounted, points: int) -> void:
 	hud.set_covering(skin_covering)
 	_frame_body()
 	_rebuild()
+	_show_missing_notice()
+
+
+## IB-31 (PROPOSED): a body with parts this build does not have opens with a notice on the refusal line, held for
+## MISSING_NOTICE_S (the next refusal or that time dismisses it); the stats panel keeps a "Missing parts" line.
+const MISSING_NOTICE_S := 12.0
+const PartManifest := preload("res://game/domain/creature/part_manifest.gd")
+
+
+func missing_notice() -> String:
+	return PartManifest.notice_for(session.working, part_rules) if session != null else ""
+
+
+func _show_missing_notice() -> void:
+	var text := missing_notice()
+	if text == "":
+		return
+	_refuse(text)
+	_refusal_t = REFUSAL_S - MISSING_NOTICE_S
+
+
+## The selection line's name for the selected thing: "part p_3", or "Missing part: <type> (p_3)" for a placeholder.
+func _selected_label() -> String:
+	if selected.is_empty():
+		return "-"
+	if selected["kind"] in ["part", "turn"]:
+		for p in session.working.parts:
+			if p["id"] == selected["id"] and PartManifest.is_placeholder(p, part_rules):
+				return "%s (%s)" % [PartManifest.part_label(p, part_rules), selected["id"]]
+	return "%s %s" % [selected["kind"], selected["id"]]
 
 
 func working_body() -> RefCounted:
@@ -256,6 +299,7 @@ func _frame_body() -> void:
 	_focus = box.get_center() + _rig_offset
 	_distance = 2.2 * box.get_longest_axis_size()
 	_frame_distance = _distance
+	_framed_length_mm = int(session.working.reference_length_mm)
 	var disc := maxf(1.2, 1.4 * box.get_longest_axis_size())
 	floor_disc.scale = Vector3(disc, 1.0, disc)
 	_update_camera()
@@ -266,6 +310,8 @@ func _frame_body() -> void:
 func _rebuild() -> void:
 	_dirty = false
 	var desc = session.working
+	if int(desc.reference_length_mm) != _framed_length_mm and walker == null:
+		_frame_body()   # the body changed size (Body size, or its undo): refit the camera and the floor
 	_store_look(desc.extra)
 	var placed := AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations)
 	_rebuild_handles(desc, placed)
@@ -780,6 +826,20 @@ func set_skin_color(color: Color) -> void:
 		walker.body.use_skin_shader(_shader_params())
 
 
+## The skin colour from typed hex (IB-33, PROPOSED): "#RRGGBB" or "#RGB", held inside the body rules' saturation
+## and value limits (ColourRules), then set as a swatch is. Text that is not a colour changes nothing and shows why
+## under the field. Returns ColourRules.resolve_hex's result.
+func set_skin_hex(text: String) -> Dictionary:
+	var r: Dictionary = ColourRules.resolve_hex(text, rules)
+	if not r["ok"]:
+		hud.set_hex_hint(String(r["error"]), true)
+		return r
+	set_skin_color(r["color"])
+	if r["clamped"]:
+		hud.set_hex_hint("Toned to %s to sit with the world's colours" % r["hex"])
+	return r
+
+
 ## The skin covering, from the covering buttons (an index into Look.COVERINGS; out of range is smooth). Like the
 ## swatch it is free and outside undo; the working body carries it as "skin_covering".
 func set_skin_covering(covering: int) -> void:
@@ -799,6 +859,34 @@ func set_head_shape(key: String, value: int) -> Dictionary:
 	if not r["ok"]:
 		hud.set_head_shape(session.head_shape())
 	return r
+
+
+## The Body size rules: the stage tuning's "body_size" block {min_mm, max_mm, step_mm} (PROPOSED).
+func body_size_rules() -> Dictionary:
+	return _stage_tuning.get("body_size", BODY_SIZE_DEFAULT)
+
+
+## One Body size step: bigger (`direction` > 0) or smaller. The whole body rescales (its reference length), as one
+## undo step and free of points; at the end of the range it is refused with the reason.
+func step_body_size(direction: int) -> Dictionary:
+	if walker != null:
+		test_drive(false)
+	return _result(session.step_body_size(direction, body_size_rules()))
+
+
+## The working body's size tier id ("small", "medium", "large"; "" without the tuning).
+func body_size_tier() -> String:
+	return String(SizeTiers.of_body(session.working, _stage_tuning.get("size_tiers", {}))["id"])
+
+
+func _refresh_body_size() -> void:
+	var size_rules := body_size_rules()
+	var mm: int = session.body_size_mm()
+	var text: Array = SIZE_TIER_TEXT.get(body_size_tier(), ["", "Body size changes reach, turning and appetite"])
+	var value := "%.2f m" % (mm / 1000.0)
+	if text[0] != "":
+		value += "  ·  %s" % text[0]
+	hud.set_body_size(value, text[1], mm > int(size_rules["min_mm"]), mm < int(size_rules["max_mm"]))
 
 
 ## The screen position of a point in body space (the description's metres), for driving by the method twins.
@@ -883,6 +971,8 @@ func drag_to(at: Vector2) -> Dictionary:
 		if selected["twin"]:
 			p.x = -p.x
 		var part: Dictionary = desc.parts.filter(func(x): return x["id"] == selected["id"])[0]
+		if not part_rules.has(part["type"]):
+			return _refuse("This part is missing from this build; it stays where it is")
 		var a: Dictionary = Picking.anchor_for_part(desc, part_rules[part["type"]], Picking.anchor_at(desc, hit["field"], p))
 		if a.has("reason"):
 			return _refuse(a["reason"])
@@ -1145,10 +1235,14 @@ func _refresh_hud() -> void:
 		var s: Dictionary = _stats_script.of(session.working, part_rules, CreatureData.gait_table(), _stage_tuning)
 		lines.append("Speed  %.1f m/s   ·   health  %d" % [float(s.get("speed_mps", 0.0)), int(s.get("max_health", 0))])
 		lines.append("Bite  %d   ·   sight  %.0f m" % [int(s.get("bite_power", 0)), float(s.get("sight_m", 0.0))])
-	lines.append("Selected  %s" % (("%s %s" % [selected["kind"], selected["id"]]) if not selected.is_empty() else "-"))
+	var gone := PartManifest.placeholder_ids(session.working, part_rules).size()
+	if gone > 0:
+		lines.append("Missing parts  %d (kept in the save)" % gone)
+	lines.append("Selected  %s" % _selected_label())
 	hud.set_stats(lines)
 	hud.set_undo_redo(not session._undo.is_empty(), not session._redo.is_empty())
 	hud.set_head_shape(session.head_shape())
+	_refresh_body_size()
 
 
 func _exit_tree() -> void:

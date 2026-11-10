@@ -316,11 +316,18 @@ func set_part_mirror(part_id: String, mirror: bool) -> Dictionary:
 	return _set_part(part_id, {"mirror": mirror}, ["mirror"])
 
 
+## A placeholder part (a type this build has no rules for, IB-31) cannot be moved, turned or scaled: its limits are
+## unknown here. It can still be removed, and that can be undone.
+const MISSING_PART_TEXT := "This part is missing from this version; it can be removed but not changed"
+
+
 func _set_part(part_id: String, values: Dictionary, allowed: Array) -> Dictionary:
 	return _apply(func(d):
 		var p := _part(d, part_id)
 		if p.is_empty():
 			return "no such part"
+		if not part_rules.has(String(p["type"])):
+			return MISSING_PART_TEXT
 		for k in values:
 			if not allowed.has(k):
 				return "%s cannot be set here" % k
@@ -363,6 +370,40 @@ func set_head_shape(key: String, value: int) -> Dictionary:
 		return "")
 
 
+# Body size (IB-30, PROPOSED) ---------------------------------------------------------------------------------------
+
+
+## The working body's overall scale, BodyDescription.reference_length_mm.
+func body_size_mm() -> int:
+	return int(working.reference_length_mm)
+
+
+## Sets the body's overall scale to `mm`, clamped to `min_mm`..`max_mm` (tuning "body_size"; the caller reads the
+## data). Positions and radii are per mille of the reference length, so the whole body grows or shrinks in
+## proportion; each part's scale follows by the same ratio, inside the part scale limits. One undo step; free of points. Refused when already at that size (the clamp's end), and, like every
+## op, when it would add a validation problem. The result carries {length_mm}.
+func set_body_size(mm: int, min_mm: int, max_mm: int) -> Dictionary:
+	var to := clampi(mm, min_mm, max_mm)
+	if to == int(working.reference_length_mm):
+		return _no("The body is already at its %s size." % ("smallest" if to <= min_mm else "largest" if to >= max_mm else "set"))
+	var from := int(working.reference_length_mm)
+	return _apply(func(d):
+		d.reference_length_mm = to
+		# Part meshes are sized in metres, not per mille of the body, so they are scaled along to keep their proportion.
+		for part in d.parts:
+			part["scale"] = clampi(roundi(float(int(part["scale"]) * to) / float(from)), int(rules["part_scale_min"]),
+					int(rules["part_scale_max"]))
+		return {"length_mm": to})
+
+
+## One step bigger (`direction` > 0) or smaller (< 0): `size_rules` is the tuning's "body_size" block,
+## {min_mm, max_mm, step_mm}.
+func step_body_size(direction: int, size_rules: Dictionary) -> Dictionary:
+	var step := int(size_rules.get("step_mm", 100)) * signi(direction)
+	return set_body_size(int(working.reference_length_mm) + step, int(size_rules.get("min_mm", 100)),
+			int(size_rules.get("max_mm", 8000)))
+
+
 # Undo, cost, preview, commit ---------------------------------------------------------------------------------------
 
 
@@ -391,7 +432,7 @@ func _priced(d: RefCounted) -> Dictionary:
 		for j in limb["joints"]:
 			out[j["id"]] = [int(costs["limb_joint"]), 2 if limb["mirror"] else 1]
 	for p in d.parts:
-		var price := int((costs["part"] as Dictionary).get(p["type"], costs["part_default"]))
+		var price := int((costs.get("part", {}) as Dictionary).get(p["type"], costs.get("part_default", 0)))
 		out[p["id"]] = [price, 2 if p["mirror"] else 1]
 	return out
 

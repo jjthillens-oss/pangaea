@@ -302,3 +302,17 @@ func test_a_legless_body_never_gets_hungry() -> void:
 	for t in 600:
 		sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false})
 	check(is_equal_approx(float(sim.player()["fullness"]), 1.0), "it cannot reach food, so it does not starve")
+
+
+func test_a_large_body_gets_hungry_faster_than_a_medium_one() -> void:
+	var idle := {"move": Vector2.ZERO, "bite": false, "evolve": false}
+	var drained := {}
+	for mm in [1200, 3600]:
+		var body: RefCounted = Fixtures.body("s1_quadruped")
+		body.reference_length_mm = mm
+		var sim: RefCounted = Sim.new(body.to_dict(), 7, tuning, data)
+		for t in 600:
+			sim.tick(idle)
+		drained[mm] = 1.0 - float(sim.player()["fullness"])
+	check(is_equal_approx(drained[1200], 10.0 / float(tuning["hunger"]["empty_s"])), "medium drains at the plain rate")
+	check(is_equal_approx(drained[3600], drained[1200] * 1.3), "large drains 1.3 times as fast (%f vs %f)" % [drained[3600], drained[1200]])

@@ -337,7 +337,7 @@ func _drive(c: Dictionary, command: Vector2) -> void:
 	if planner == null:
 		return
 	# A heavy body cannot reach its legs' top speed (CreatureStats.speed_factor): the throttle is scaled down.
-	planner.step(DT, command.x * float(c["stats"].get("speed_factor", 1.0)), command.y)
+	planner.step(DT, command.x * float(c["stats"].get("speed_factor", 1.0)), command.y * float(c["stats"].get("turn_factor", 1.0)))
 	_place(c, Rules.clamp_to_field(planner.position, half_size, float(c["stats"]["body_radius_m"])))
 	c["yaw"] = planner.yaw
 
@@ -443,7 +443,8 @@ func _hunger(c: Dictionary) -> void:
 	var cfg: Dictionary = tuning.get("hunger", {})
 	if cfg.is_empty() or not c["alive"] or not c["stats"]["has_legs"]:
 		return
-	c["fullness"] = maxf(0.0, c["fullness"] - DT / float(cfg["empty_s"]))
+	# A large body empties faster and a small one slower (size tiers, IB-30, PROPOSED); medium is 1.0.
+	c["fullness"] = maxf(0.0, c["fullness"] - DT * float(c["stats"].get("energy_use_factor", 1.0)) / float(cfg["empty_s"]))
 	if c["fullness"] <= 0.0:
 		var regen := float(tuning["health"]["regen_per_s"]) * DT
 		c["health"] -= regen + float(cfg["starve_damage_per_s"]) * DT
