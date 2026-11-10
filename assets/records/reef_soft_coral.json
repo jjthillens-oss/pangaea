@@ -1,0 +1,51 @@
+{
+  "id": "reef_soft_coral",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "outside mesh trial - aquatic reef, awaiting owner look review",
+  "purpose": "Aquatic stage reef dressing (PROPOSED trial): a soft coral tree. Scenery only; it has no gameplay role.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/reef_soft_coral.blend",
+  "generator_script": "tools/blender/import_patch_reef.py",
+  "export_path": "assets/export/reef_soft_coral.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.822,
+    "y_forward": 0.676,
+    "z_up": 1.093
+  },
+  "triangles": 741,
+  "triangle_budget": 2000,
+  "textures": [],
+  "materials": [
+    "M_PatchReef"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "ReefSoftCoral"
+  ],
+  "kind": "dressing",
+  "pivot": "bottom centre, on the sea floor (Godot y = 0)",
+  "engine_material": "res://assets/export/M_PatchReef.tres",
+  "license": "CC BY 4.0 (attribution required; credited in CREDITS.md)",
+  "third_party_sources": [
+    {
+      "name": "Soft Coral Tree",
+      "author": "Polyfork (Lucas Martinic)",
+      "url": "https://polyfork.dev/asset/soft-coral-tree-450af0",
+      "retrieved_through": "Patch asset library (patch.gg), id polyfork:soft-coral-tree-450af0",
+      "retrieved": "2026-11-10",
+      "path": "assets/source/third_party/polyfork/soft-coral-tree-450af0.glb",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "credit": "Soft Coral Tree by Polyfork (https://polyfork.dev/asset/soft-coral-tree-450af0), CC BY 4.0",
+      "modified": "pieces joined into one mesh, turned 180 degrees about the up axis, the material renamed M_PatchReef, animation removed; the shape and vertex colours are unchanged"
+    }
+  ],
+  "provenance": "An outside mesh: Soft Coral Tree by Polyfork (CC BY 4.0), a model its author generates from code, taken unchanged in shape and colour from assets/source/third_party/polyfork/soft-coral-tree-450af0.glb. tools/blender/import_patch_reef.py only joins, turns and renames it. Not authored in-house."
+}

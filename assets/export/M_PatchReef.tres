@@ -1,0 +1,11 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; The reef dressing trial's shared material (tools/blender/import_patch_reef.py; records reef_*.json).
+; The props are outside meshes from Polyfork (CC BY 4.0) coloured only by vertex colours, which the
+; glTF importer would leave unused. Their COLOR_0 is linear, as glTF defines it, so it is not marked sRGB.
+; Each reef_*.glb.import points its imported M_PatchReef here.
+
+[resource]
+resource_name = "M_PatchReef"
+vertex_color_use_as_albedo = true
+roughness = 0.85

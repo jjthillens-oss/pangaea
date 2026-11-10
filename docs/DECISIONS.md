@@ -1596,3 +1596,22 @@ sharing (IB-31), authored terrain variety (IB-32) and colour freedom in the edit
 (`docs/research/mod-wishes.md`, `docs/research/innovation-backlog.md`), are now backlog features in
 `docs/director/backlog.json`. IB-32's runtime placement boundary (Bible §15) still needs the owner's approval before
 its slice merges. Impact: no era, save schema or pipeline change; each slice follows its owner's usual tier.
+
+## 2026-11-10 · Outside scenery meshes: reef trial (PROPOSED, awaiting the owner's look review)
+Joshua installed Patch (patch.gg), whose asset library holds about 59,000 CC0 and CC BY 4.0 assets, and said
+(2026-11-10 06:07 UTC) he wants it "just for things that aren't the main game": background, atmosphere and plants,
+never animals, because every creature must look like something the editor can build. This trial brings twelve
+reef props (corals, sponges, sea plants, a boulder and a bubble vent) by Polyfork into the Aquatic stage through
+`tools/blender/import_patch_reef.py`, each with a `.blend`, a GLB and a record, placed by `_dress_reef_trial()` in
+`game/scenes/aquatic/aquatic_world.gd` (`REEF_TRIAL_COUNT := 0` turns it off). What it changes, if accepted:
+- **Pipeline.** These are the first production meshes not authored by our own Blender scripts (art direction
+  section 8 asks the owner's approval for downloaded meshes). Polyfork describes its models as generated from code
+  ("AI-native 3D assets made with code"); Patch lists them as not AI-generated. The script changes no shape or colour.
+- **Licence.** CC BY 4.0, not CC0, so the 2026-10-22 "CC0 by default" rule does not cover them. Each is credited in
+  `CREDITS.md` and its record, and the unchanged files and licence text are kept in
+  `assets/source/third_party/polyfork/`. A public build must show the credits to players; no credits screen exists yet.
+- **Look.** Flat-shaded and vertex-coloured, with no baked textures, so they sit below the production bar the other
+  dressing follows (they carry their own review state and are outside `test_production_assets_*`). Whether they
+  fit beside the lattice landmarks is the owner's call from the before and after shots in the PR.
+- **Not changed.** No animal, creature part, sim rule, save field or dependency. Patch itself is not a dependency:
+  nothing in the repo calls it, and nothing of Pangaea was uploaded to it.

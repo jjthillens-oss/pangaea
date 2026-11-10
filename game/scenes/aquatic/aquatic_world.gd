@@ -17,6 +17,19 @@ const DRESSING := ["res://assets/export/landmark_fan.glb", "res://assets/export/
 		"res://assets/export/rare_sponge_grove.glb", "res://assets/export/rock_a.glb", "res://assets/export/rock_b.glb",
 		"res://assets/export/rock_c.glb", "res://assets/export/landmark_great_shell.glb"]
 const DRESSING_COUNT := 46
+## The reef dressing trial (PROPOSED, docs/DECISIONS.md "Outside scenery meshes: reef trial"): outside low-poly
+## scenery from Polyfork (CC BY 4.0, CREDITS.md), placed by its own seeded stream so the dressing above stays as it
+## was. Each prop has the scale that brings it to the player fish's size class (the files are life-size, from a
+## 0.35 m pillar coral to a 2.7 m boulder). Set REEF_TRIAL_COUNT to 0 to see the stage without it.
+const REEF_TRIAL := {
+	"res://assets/export/reef_brain_coral.glb": 1.6, "res://assets/export/reef_staghorn_coral.glb": 1.7,
+	"res://assets/export/reef_table_coral.glb": 1.5, "res://assets/export/reef_pillar_coral.glb": 4.5,
+	"res://assets/export/reef_soft_coral.glb": 1.8, "res://assets/export/reef_sea_fan.glb": 1.4,
+	"res://assets/export/reef_seagrass.glb": 2.6, "res://assets/export/reef_algae_frond.glb": 2.0,
+	"res://assets/export/reef_tube_sponge.glb": 1.6, "res://assets/export/reef_barrel_sponge.glb": 1.3,
+	"res://assets/export/reef_boulder.glb": 1.4, "res://assets/export/reef_bubble_vent.glb": 1.4,
+}
+const REEF_TRIAL_COUNT := 150
 const PLAYER_DIVISIONS := 36
 const ANIMAL_DIVISIONS := 22
 const CAMERA_BACK := 4.2
@@ -58,6 +71,7 @@ func setup(p_sim: AquaticSim) -> void:
 		_add_scene(SHELTER, Transform3D(Basis(Vector3.UP, float(p.x) * 0.1).scaled(Vector3.ONE * 1.35),
 				Vector3(p.x, sim.floor_at(p.x, p.z) - 0.4, p.z)))
 	_dress_reef()
+	_dress_reef_trial()
 	for f in sim.food:
 		var node := _add_scene(FOOD_SCENES[f.kind], Transform3D(Basis().scaled(Vector3.ONE * FOOD_SCALE[f.kind]), f.pos))
 		food_nodes[f.id] = node
@@ -149,6 +163,38 @@ func _dress_reef() -> void:
 		var s := rng.randf_range(0.8, 1.9)
 		_add_scene(DRESSING[rng.randi() % DRESSING.size()], Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), p))
 		placed += 1
+
+
+## The trial's corals, sponges and plants in clumps on the sunlit reef, thinning with depth, clear of the route's sites.
+func _dress_reef_trial() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([sim.world_seed, "aquatic.reef_trial"])
+	var keep_clear: Array[Vector3] = [sim.nest_pos()]
+	for list in [sim.rules.world.shelters, sim.rules.world.feeding]:
+		for s in list:
+			keep_clear.append(AquaticSim._v(s.pos))
+	var placed := 0
+	var tries := 0
+	while placed < REEF_TRIAL_COUNT and tries < REEF_TRIAL_COUNT * 4:
+		tries += 1
+		# Squaring the draw crowds the clumps toward the shallow end.
+		var z := -8.0 - 150.0 * rng.randf() * rng.randf()
+		var side := -1.0 if rng.randf() < 0.5 else 1.0
+		var centre := Vector2(side * rng.randf_range(4.0, 34.0), z)
+		for i in rng.randi_range(2, 5):
+			var at := centre + Vector2(rng.randf_range(-2.2, 2.2), rng.randf_range(-2.2, 2.2))
+			var p := Vector3(at.x, sim.floor_at(at.x, at.y) - 0.05, at.y)
+			var clear := true
+			for c in keep_clear:
+				if Vector2(c.x - p.x, c.z - p.z).length() < 5.0:
+					clear = false
+					break
+			if not clear:
+				continue
+			var path: String = REEF_TRIAL.keys()[rng.randi() % REEF_TRIAL.size()]
+			var s := float(REEF_TRIAL[path]) * rng.randf_range(0.75, 1.3)
+			_add_scene(path, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), p))
+			placed += 1
 
 
 func _build_environment() -> void:
