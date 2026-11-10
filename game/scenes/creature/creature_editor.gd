@@ -883,6 +883,8 @@ func drag_to(at: Vector2) -> Dictionary:
 		if selected["twin"]:
 			p.x = -p.x
 		var part: Dictionary = desc.parts.filter(func(x): return x["id"] == selected["id"])[0]
+		if not part_rules.has(part["type"]):
+			return _refuse("This part is missing from this build; it stays where it is")
 		var a: Dictionary = Picking.anchor_for_part(desc, part_rules[part["type"]], Picking.anchor_at(desc, hit["field"], p))
 		if a.has("reason"):
 			return _refuse(a["reason"])

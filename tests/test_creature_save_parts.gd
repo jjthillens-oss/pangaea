@@ -1,5 +1,6 @@
 extends TestCase
-## Save v3 must name invalid creature parts and recover the last complete body.
+## Save v3 must name invalid creature parts and recover the last complete body. A part of a type this build does
+## not have is not invalid (IB-31, tests/test_graceful_sharing.gd); these use a known part scaled past its limit.
 
 const FIXTURE := "res://tests/fixtures/save_v3_creature.json"
 const SUFFIXES := ["", PersistenceService.BACKUP_SUFFIX, PersistenceService.TEMP_SUFFIX]
@@ -30,18 +31,18 @@ func _write(path: String, content: String) -> void:
 	file.close()
 
 
-func test_unknown_part_loads_complete_backup_with_a_clear_reason() -> void:
+func test_invalid_part_loads_complete_backup_with_a_clear_reason() -> void:
 	var good := FileAccess.get_file_as_string(FIXTURE)
 	_write(slot_path + PersistenceService.BACKUP_SUFFIX, good)
 	var data: Dictionary = JSON.parse_string(good)
 	var parts: Array = data["creature"]["body"]["parts"]
-	parts[0]["type"] = "unrecognized_part"
+	parts[0]["scale"] = 99999
 	var damaged := JSON.stringify(data)
 	_write(slot_path, damaged)
 	var result := service.load_from(slot_path)
 	check(result.ok, "the valid backup loads: %s" % [result.errors])
 	check_eq(result.source, "backup", "the invalid primary is not accepted")
-	check_has_error(result.errors, "unknown type unrecognized_part")
+	check_has_error(result.errors, "part p_1 scale 99999 is outside")
 	check_eq(
 		FileAccess.get_file_as_string(slot_path), damaged, "damaged file is left for diagnosis"
 	)
@@ -53,10 +54,10 @@ func test_unknown_part_loads_complete_backup_with_a_clear_reason() -> void:
 	if result.ok:
 		var recovered: Array = result.save.creature["body"]["parts"]
 		check_eq(recovered.size(), parts.size(), "all backup parts are retained")
-		check_eq(recovered[0]["type"], "eye", "the original part is restored")
+		check_eq(int(recovered[0]["scale"]), 800, "the original part is restored")
 
 
-func test_unknown_part_cannot_overwrite_a_good_save() -> void:
+func test_invalid_part_cannot_overwrite_a_good_save() -> void:
 	var good := FileAccess.get_file_as_string(FIXTURE)
 	_write(slot_path, good)
 	var result := service.load_from(slot_path)
@@ -64,7 +65,7 @@ func test_unknown_part_cannot_overwrite_a_good_save() -> void:
 	if not result.ok:
 		return
 	var save: SaveGame = result.save
-	(save.creature["body"]["parts"] as Array)[0]["type"] = "unrecognized_part"
+	(save.creature["body"]["parts"] as Array)[0]["scale"] = 99999
 	check_eq(service.save_to(slot_path, save), ERR_INVALID_DATA, "the invalid part is refused")
 	check_eq(FileAccess.get_file_as_string(slot_path), good, "the last good save remains intact")
 	check(
