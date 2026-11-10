@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
+  "purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin whose lid hugs the ball; blinks on a shape key.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_eye_bulge.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_eye_bulge.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 4,
+  "revision": 5,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.129,
-    "y_forward": 0.129,
+    "x": 0.13,
+    "y_forward": 0.13,
     "z_up": 0.11
   },
-  "triangles": 960,
+  "triangles": 1152,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -97,11 +97,20 @@
     "M_EyeBulgeMound": 0.9,
     "M_EyeBulgeLid": 0.9
   },
+  "review_notes": {
+    "revision": 5,
+    "cause": "The cream band was the lid band itself (M_EyeBulgeLid, the eight rows from `low` up to the lip): a wide, near-flat ledge round the ball in a lighter tint (#79A458) with a flat 0.8 grey, so under the editor's key light it read as a pale cream-green ring between the iris and the mound. Confirmed on the hopper preset close up with tools/godot/part_on_body_shot.gd --mark (the lid painted red, the mound blue). The back of the lip, seen through the 1.6 mm gap, showed as a dark ring in Blender but not as the band.",
+    "change": "The lid takes the mound's tint (#6E9A4E) and a flat 0.72 grey, a little darker than the mound's mottle, so it reads as skin folding round the ball. The profile is rebuilt: six lid rows hug the ball up to a rounded lip at 1.08 ball radii, and a last row tucks the lip's edge inside the ball (0.972 radii), so there is no gap and no back face to see. The skirt below the skin tucks in (1.0 radii at the bottom) under a widest ring at the skin line, so on a rounded head the mound curves into the skin instead of standing off it as a wall. 32 segments round the ball and mound (was 24) and six iris rows (was four), so the outline is less faceted. H1_Blink closes the same dome (rows spread evenly from `low` to the pole on 1.07 radii; the tucked edge closes under the lip inside the dome); H2_Bulge now stretches only the ball above the lip (its top still rises a third of a radius), so it never pulls away from the lid. 1152 of 1200 triangles (was 960); dimensions, footprint, sink, pivot, handle keys, sockets (none), iris and materials' names unchanged.",
+    "gate1_shape": "pass: gray front, side and 3/4 (Blender) show the ball seated in one rounded mound, the lid hugging the ball to a rounded lip with no gap (before: a black ring between ball and lip), and the skirt tapering under the skin. Godot captures: H1_Blink 500 rolls a clean green lid over the lower ball, 1000 closes a round dome with no pinhole, H2_Bulge 1000 shows no gap at the lid. Remaining: the ball's top outline still shows mild facets close up (rows 19 degrees apart, was 29); one more row would go over the budget.",
+    "gate2_materials": "pass: glossy bronze iris with the slit pupil, the lid an even green band of the mound's colour (no pale ring), the mound mottled wet skin, in the Blender material views, the baked albedo and Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py) and the neutral Godot capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); on the hopper preset in the creature editor scene (tools/godot/part_on_body_shot.gd) in the editor view, at the world's gameplay distance and close, the pale ledge is gone and the mound's edge curves into the head in shadow; blinked shut it is a round green dome. The mound still stands off the hopper's narrow head as a rounded collar (scale 1300 on a strongly curved head), and parts keep their baked colours, so it is a lighter green than the hopper's body (paint_mix is not read by game code)."
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 1056,
-    "triangles_after": 960
+    "triangles_before": 1152,
+    "triangles_after": 1152
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
