@@ -227,6 +227,12 @@ terrain samey (wish 12). GENESIS habitats can be composed from a small set of Bl
 seed, inside the procedural-placement boundary §15 asks us to define. Smallest slice: the M2 habitat built from four
 landform pieces, two seeds compared side by side.
 
+Status: the layout rule is IMPLEMENTED and unused. `game/domain/creature/landform_layout.gd` composes, per world
+seed, a list of landform placements (every kind at least once, footprints that do not overlap, inside the field,
+clear of the nest) from the PROPOSED tuning in `game/data/creature/landform_rules.json`;
+`tests/test_landform_layout.gd` checks it. Still open (PROPOSED): the four Blender landforms, placing them in the
+creature world scene, and the §15 runtime placement boundary approval.
+
 **IB-33 Colour and material freedom.** Nine colour, paint and texture mods (wish 3) say players wanted exact colour
 control and more pattern options. Within the §15 saturation discipline, the editor can offer hex entry, three colour
 regions and a pattern layer. Smallest slice: hex entry plus two regions on the M2 benchmark creature's material
