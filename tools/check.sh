@@ -56,15 +56,19 @@
 #   aquatic: the Aquatic stage slice (--aquatic) on a hunter cell lineage saved under user://smoke/: the converted
 #             body and lineage, a swim down the route, mating opens the fin and tail editor, Done makes generation 2,
 #             Escape saves and returns to the title, the slot holds the v5 aquatic block beside the cell's data, and
-#             the stage opens again with the same fish, generation, finds, points and place
+#             the stage opens again with the same fish, generation, finds, points and place; lobe fins open the
+#             shore: Stay in the sea is recorded, then Crawl onto land crosses to the creature stage
+#   continuity: one slot along the whole chain in one process (backlog M4-03): a cell at its sea edge, Swim out to
+#             sea, lobe fins, Crawl onto land, Continue from the title on land, then the way back to the sea and to
+#             the pool; the lineage id, genome, discoveries and relationships are the same at every step
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
-# Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 1200 s, each
+# Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 2400 s, each
 # endless phase 120 s (twice its measured time, at least 120 s, build plan B-17), each other run,
 # the growth phases among them, 300 s, about three times its usual length on the shared 4-CPU
 # container; the suite's
 # limit holds the S1 fast and slow budgets, build plan B-13), so a hang fails the check with exit
-# code 124 and the output so far instead of running until CI's job timeout (40 minutes);
+# code 124 and the output so far instead of running until CI's job timeout (70 minutes);
 # tools/test_bounded.sh checks those limits first, and that a Ctrl-C still stops it all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -75,7 +79,7 @@ source tools/bounded.sh
 
 tools/test_bounded.sh
 bounded 600 "$GODOT" --headless --path . --import
-bounded 1200 "$GODOT" --headless --path . --script res://tests/run_tests.gd
+bounded 2400 "$GODOT" --headless --path . --script res://tests/run_tests.gd
 bounded 300 "$GODOT" --headless --path . res://game/scenes/boot.tscn -- --smoke
 rm -rf builds/smoke
 mkdir -p builds/smoke
@@ -98,6 +102,7 @@ bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/aquatic_smoke.gd -- --aquatic --slot=user://smoke/aquatic.json --seed=4250 2>&1 | tee builds/smoke/aquatic.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/continuity_smoke.gd -- --slot=user://smoke/continuity.json --seed=4252 2>&1 | tee builds/smoke/continuity.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

@@ -100,7 +100,8 @@ func save_to(path: String, save: SaveGame) -> Error:
 
 
 ## Returns {"ok": bool, "save": SaveGame or null, "source": "primary" | "recovered" | "backup" | "",
-## "errors": PackedStringArray}
+## "errors": PackedStringArray, "warnings": PackedStringArray}. A warning names a creature part this build does not
+## have; that part is kept in the save and shown as a placeholder (CreatureRules.body_warnings).
 func load_from(path: String) -> Dictionary:
 	var primary := _read_current_version(path)
 	if primary.ok:
@@ -119,11 +120,11 @@ func load_from(path: String) -> Dictionary:
 		return backup
 	var errors: PackedStringArray = primary.errors
 	errors.append_array(backup.errors)
-	return {"ok": false, "save": null, "source": "", "errors": errors}
+	return {"ok": false, "save": null, "source": "", "errors": errors, "warnings": PackedStringArray()}
 
 
 func _read_current_version(path: String) -> Dictionary:
-	var result := {"ok": false, "save": null, "source": "", "errors": PackedStringArray()}
+	var result := {"ok": false, "save": null, "source": "", "errors": PackedStringArray(), "warnings": PackedStringArray()}
 	if not FileAccess.file_exists(path):
 		result.errors.append("%s: file not found." % path.get_file())
 		return result
@@ -143,6 +144,11 @@ func _read_current_version(path: String) -> Dictionary:
 		return result
 	result.ok = true
 	result.save = save
+	# Parts this build does not have load as placeholders with a warning, never a refusal (IB-31, PROPOSED).
+	# Derived here on every load; nothing about it is saved.
+	if creature_rules != null and save.creature.get("body") is Dictionary:
+		for warning in creature_rules.body_warnings(save.creature["body"]):
+			result.warnings.append("%s: %s" % [path.get_file(), warning])
 	return result
 
 

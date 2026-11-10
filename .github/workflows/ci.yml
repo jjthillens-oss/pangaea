@@ -39,10 +39,11 @@ jobs:
   test-and-export:
     runs-on: ubuntu-24.04
     # A backstop only: check.sh and check_release.sh stop each Godot run that hangs (the unit
-    # suite after 20 minutes, every other run sooner) and fail with its output so far, well
-    # inside this; the export step has its own limit. 40 minutes holds the S1 fast and slow
-    # budgets (S1 build plan B-13).
-    timeout-minutes: 40
+    # suite after 40 minutes, every other run sooner) and fail with its output so far, well
+    # inside this; the export step has its own limit. 70 minutes (40 until 2026-11-10, when the
+    # suite had grown past its 1200 s limit on these runners) holds the S1 fast and slow budgets
+    # (S1 build plan B-13).
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
 

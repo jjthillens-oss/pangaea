@@ -16,6 +16,8 @@ signal test_drive_toggled(on: bool)
 signal color_chosen(color: Color)
 ## A covering button: an index into the covering names setup() was given (creature_look.gd COVERINGS).
 signal covering_chosen(covering: int)
+## The hex field was submitted (Enter, or leaving the field with new text): the text as typed.
+signal hex_entered(text: String)
 signal preset_chosen(preset_name: String)
 ## The "Random creature" button beside the presets.
 signal random_requested
@@ -23,6 +25,8 @@ signal random_requested
 signal head_shape_changed(key: String, value: int)
 ## A head shape slider drag began (true) or ended (false), so the editor makes the drag one undo step.
 signal head_shape_drag(started: bool)
+## A Body size button was pressed (IB-30): -1 smaller, +1 bigger.
+signal body_size_step(direction: int)
 
 const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
@@ -76,6 +80,11 @@ var tools_grid: GridContainer
 var swatch_row: HBoxContainer
 ## The covering toggles, built by setup() under its own caption after the swatches.
 var covering_row: HBoxContainer
+## The exact colour entry (IB-33), built by setup() between the caption and the swatches: the field and its hint.
+var hex_field: LineEdit
+var hex_hint: Label
+var _hex_shown := ""
+var _hex_sent := ""   ## the last text handed to hex_entered, so leaving the field does not send it twice
 var points_text: Label
 var cost_text: Label
 var stats_text: Label
@@ -162,6 +171,7 @@ func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {
 		b.pressed.connect(func(): color_chosen.emit(color))
 		swatch_row.add_child(b)
 		_swatches.append(b)
+	_build_hex_entry()
 	_build_coverings(coverings)
 
 
@@ -287,6 +297,53 @@ func set_tool(type: String) -> void:
 func set_color(color: Color) -> void:
 	for b in _swatches:
 		b.set_pressed_no_signal(b.tooltip_text == color.to_html(false))
+	if hex_field != null:
+		_hex_shown = "#" + color.to_html(false).to_upper()
+		hex_field.text = _hex_shown
+		_hex_sent = _hex_shown
+		set_hex_hint("")
+
+
+## The line under the hex field: a refusal (`warn`) or a note that the colour was toned down; empty hides it.
+func set_hex_hint(text: String, warn: bool = false) -> void:
+	if hex_hint == null:
+		return
+	hex_hint.text = text
+	hex_hint.visible = text != ""
+	hex_hint.theme_type_variation = &"WarnLabel" if warn else &"SmallLabel"
+
+
+## The hex field and its hint line, placed above the swatches once. The field takes focus only by a click and gives
+## it back on Enter, so the editor's keys work again.
+func _build_hex_entry() -> void:
+	if hex_field != null:
+		return
+	var box := swatch_row.get_parent()
+	hex_field = LineEdit.new()
+	hex_field.name = "HexField"
+	hex_field.placeholder_text = "#RRGGBB"
+	hex_field.max_length = 9
+	hex_field.focus_mode = Control.FOCUS_CLICK
+	hex_field.select_all_on_focus = true
+	hex_field.tooltip_text = "Type an exact skin colour as hex, then press Enter"
+	hex_field.text_submitted.connect(func(text: String):
+		_hex_sent = text
+		hex_entered.emit(text)
+		if hex_field.is_inside_tree():
+			hex_field.release_focus())
+	hex_field.focus_exited.connect(func():
+		if hex_field.text != _hex_shown and hex_field.text != _hex_sent:
+			_hex_sent = hex_field.text
+			hex_entered.emit(hex_field.text))
+	hex_hint = Label.new()
+	hex_hint.name = "HexHint"
+	hex_hint.theme_type_variation = &"SmallLabel"
+	hex_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hex_hint.visible = false
+	box.add_child(hex_field)
+	box.add_child(hex_hint)
+	box.move_child(hex_field, swatch_row.get_index())
+	box.move_child(hex_hint, swatch_row.get_index())
 
 
 ## Shows covering `index` as the pressed toggle without emitting covering_chosen.
@@ -529,3 +586,78 @@ static func head_value_text(key: String, value: int) -> String:
 		if spec["key"] == key and spec["kind"] == "amount":
 			return "%d%%" % roundi(value / 10.0)
 	return "%.2fx" % (value / 1000.0)
+
+
+# Body size (IB-30, PROPOSED) ---------------------------------------------------------------------------------------
+
+var _size_box: VBoxContainer
+var _size_smaller: Button
+var _size_bigger: Button
+var _size_value: Label
+var _size_hint: Label
+
+
+## The Body size row right under the stats, built once: Smaller and Bigger buttons (body_size_step), the current
+## length and tier between them, and a one-line hint of what the tier does.
+func setup_body_size() -> void:
+	if _size_box != null:
+		return
+	var box: VBoxContainer = stats_text.get_parent()
+	_size_box = VBoxContainer.new()
+	_size_box.name = "BodySize"
+	_size_box.add_theme_constant_override("separation", 2)
+	var sep := HSeparator.new()
+	sep.name = "BodySizeSep"
+	var title := Label.new()
+	title.text = "BODY SIZE"
+	title.theme_type_variation = &"CaptionLabel"
+	var row := HBoxContainer.new()
+	row.name = "Row"
+	_size_smaller = Button.new()
+	_size_smaller.name = "Smaller"
+	_size_smaller.text = "Smaller"
+	_size_smaller.focus_mode = Control.FOCUS_NONE
+	_size_smaller.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+	_size_smaller.pressed.connect(func(): body_size_step.emit(-1))
+	_size_value = Label.new()
+	_size_value.name = "Value"
+	_size_value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_size_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_size_value.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+	_size_bigger = Button.new()
+	_size_bigger.name = "Bigger"
+	_size_bigger.text = "Bigger"
+	_size_bigger.focus_mode = Control.FOCUS_NONE
+	_size_bigger.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+	_size_bigger.pressed.connect(func(): body_size_step.emit(1))
+	row.add_child(_size_smaller)
+	row.add_child(_size_value)
+	row.add_child(_size_bigger)
+	_size_hint = Label.new()
+	_size_hint.name = "Hint"
+	_size_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_size_hint.add_theme_font_size_override("font_size", HEAD_FONT_PX - 2)
+	_size_box.add_child(sep)
+	_size_box.add_child(title)
+	_size_box.add_child(row)
+	_size_box.add_child(_size_hint)
+	box.add_child(_size_box)
+	box.move_child(_size_box, stats_text.get_index() + 1)
+
+
+## Shows the body's size: `value` like "1.40 m  ·  Medium", `hint` the tier's effect line; a button greys at its end.
+func set_body_size(value: String, hint: String, can_smaller: bool, can_bigger: bool) -> void:
+	if _size_box == null:
+		return
+	_size_value.text = value
+	_size_hint.text = hint
+	_size_smaller.disabled = not can_smaller
+	_size_bigger.disabled = not can_bigger
+
+
+## What the Body size row shows now: {value, hint, can_smaller, can_bigger} (empty before setup_body_size).
+func body_size_shown() -> Dictionary:
+	if _size_box == null:
+		return {}
+	return {"value": _size_value.text, "hint": _size_hint.text, "can_smaller": not _size_smaller.disabled,
+			"can_bigger": not _size_bigger.disabled}

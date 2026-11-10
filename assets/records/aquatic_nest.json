@@ -1,0 +1,197 @@
+{
+  "id": "aquatic_nest",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Aquatic stage spawning nest (PROPOSED): the stage's home landmark: a raised shell-gravel mound with a scooped dish, a ring of rounded reef stones crusted with lilac coral polyps, six clutches of cream cartilage egg capsules (one shown per generation hatched) and a stacked reef-stone beacon with amber ribbon fronds that reads from about 25 m.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/aquatic_nest.blend",
+  "generator_script": "tools/blender/make_aquatic_world.py",
+  "export_path": "assets/export/aquatic_nest.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 9.2,
+    "y_forward": 9.2,
+    "z_up": 5.997
+  },
+  "triangles": 11666,
+  "triangle_budget": 12000,
+  "textures": [
+    {
+      "name": "T_AquaticNest_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_AquaticNest_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_AquaticNest_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_AquaticNest",
+    "M_NestCoralProc",
+    "M_NestEggHornProc",
+    "M_NestEggProc",
+    "M_NestFrondProc",
+    "M_NestGravelProc",
+    "M_NestStoneProc"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Beacon",
+    "BeaconDetail",
+    "Clutch_1",
+    "Clutch_2",
+    "Clutch_3",
+    "Clutch_4",
+    "Clutch_5",
+    "Clutch_6",
+    "NestMound",
+    "NestPolyps",
+    "NestRim"
+  ],
+  "kind": "nest",
+  "pivot": "the nest's centre on the floor (Blender z = 0, Godot y = 0); the dish lies 0.27 m above it and a 0.55 m skirt below it",
+  "usage": "game/scenes/aquatic/aquatic_world.gd places it at rules.world.nest (x, z) on the floor profile at scale 1, tilts it to the slope there (about X, the profile's rise over 4 m) and sinks it NEST_SINK; the Beacon node is then stood upright on its foot; Clutch_i is shown while i <= the generations hatched this stage (history + 1, at most 6).",
+  "nest_m": {
+    "footprint_r": 4.6,
+    "dish_z": 0.27,
+    "crest_r": 3.5,
+    "crest_z": 0.5,
+    "skirt": 0.55,
+    "rim_min_r": 3.6,
+    "rim_max_z": 0.9,
+    "beacon_at": [
+      -2.151,
+      3.072,
+      0.503
+    ],
+    "beacon_max_z": 6.0
+  },
+  "clutches": [
+    {
+      "node": "Clutch_1",
+      "at": [
+        0.322,
+        1.516,
+        0.287
+      ]
+    },
+    {
+      "node": "Clutch_2",
+      "at": [
+        1.722,
+        0.915,
+        0.302
+      ]
+    },
+    {
+      "node": "Clutch_3",
+      "at": [
+        -1.341,
+        1.125,
+        0.298
+      ]
+    },
+    {
+      "node": "Clutch_4",
+      "at": [
+        -1.858,
+        -0.866,
+        0.309
+      ]
+    },
+    {
+      "node": "Clutch_5",
+      "at": [
+        -0.202,
+        -1.436,
+        0.28
+      ]
+    },
+    {
+      "node": "Clutch_6",
+      "at": [
+        1.458,
+        -1.139,
+        0.301
+      ]
+    }
+  ],
+  "palette": {
+    "gravel": [
+      "#6E6352",
+      "#A99C85",
+      "#D8CDB3"
+    ],
+    "dish": [
+      "#7C705C",
+      "#918470"
+    ],
+    "stone": [
+      "#5B544A",
+      "#847B6D",
+      "#A99F8B"
+    ],
+    "coral": [
+      "#7E6A9A",
+      "#9C86B4",
+      "#CDBEDC"
+    ],
+    "egg": [
+      "#EFE3C6",
+      "#DDB57A"
+    ],
+    "horn": [
+      "#B07A3C",
+      "#C99550"
+    ],
+    "frond": [
+      "#B06A2C",
+      "#CF8E42"
+    ]
+  },
+  "gate_report": "docs/evidence/credit-aquatic-r2/aquatic_asset_gates.md",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance per piece; full-detail shading baked to the normal map",
+    "tolerance_m": {
+      "NestMound": 0.008,
+      "NestRim": 0.007,
+      "NestPolyps": 0.0015,
+      "Beacon": 0.006,
+      "BeaconDetail": 0.0015,
+      "Clutch_1": 0.003,
+      "Clutch_2": 0.003,
+      "Clutch_3": 0.003,
+      "Clutch_4": 0.003,
+      "Clutch_5": 0.003,
+      "Clutch_6": 0.003
+    },
+    "triangles_before": 14416,
+    "triangles_after": 11666
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_aquatic_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders (no image sources)."
+}

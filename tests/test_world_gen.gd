@@ -767,20 +767,40 @@ func test_slow_size_two_chunks_cost_at_most_300_us_median_and_600_us_max() -> vo
 func test_slow_band_1_chunks_cost_as_band_0s() -> void:
 	var catalog := SpeciesCatalog.load_from()
 	var top := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), catalog)
+	# A row that sits on its limit (1.20 x against "at most 1.20" on a busy CI runner, 2026-11-10) is
+	# measured again before it fails: the limits stay as accepted, and a real regression fails every
+	# attempt, where a loaded machine's reading does not repeat.
+	var rows: Array = []
+	for attempt in BAND_1_ATTEMPTS:
+		rows = _band_1_rows(top, catalog)
+		if rows.all(func(row: Array) -> bool: return row[0]):
+			break
+	for row in rows:
+		check(row[0], row[1])
+
+
+## The measurements test_slow_band_1_chunks_cost_as_band_0s may take before a row over its limit fails.
+const BAND_1_ATTEMPTS := 3
+
+
+## One measurement of S3G20's rows: [[passes, message], ...].
+func _band_1_rows(top: WorldContent, catalog: SpeciesCatalog) -> Array:
+	var rows: Array = []
 	var cost := _cold_chunk_costs_at([1, 3, 2, 4], func() -> WorldGen: return WorldGen.create(top, catalog, 4242))
 	var limits := {3: [150.0, 1.5, 300.0, 3.0], 4: [300.0, 3.5, 600.0, 7.0]}
 	for n in [3, 4]:
 		var c: Dictionary = cost[n]
 		var l: Array = limits[n]
-		check(c.median <= l[0] and c.median_ratio <= l[1], "size %d: median %.0f us, %.2f yardsticks" % [n, c.median, c.median_ratio])
-		check(c.max <= l[2] and c.top <= l[3], "size %d: max %.0f us, %.2f yardsticks" % [n, c.max, c.top])
+		rows.append([c.median <= l[0] and c.median_ratio <= l[1], "size %d: median %.0f us, %.2f yardsticks" % [n, c.median, c.median_ratio]])
+		rows.append([c.max <= l[2] and c.top <= l[3], "size %d: max %.0f us, %.2f yardsticks" % [n, c.max, c.top]])
 		var base: Dictionary = cost[n - 2]
 		# The max row compares the mean of each size's TOP_N slowest chunks: one chunk's time is mostly machine
 		# noise (0.9x to 1.5x run to run on the same code), the mean of the slowest few is steady.
 		for row in [["median", 1.20], ["p90", 1.20], ["top_mean", 1.35]]:
 			var ratio := float(c[row[0]]) / maxf(1.0, float(base[row[0]]))
-			check(ratio <= row[1], "size %d against %d: %s %.0f us / %.0f us = %.2f x (at most %.2f)"
-				% [n, n - 2, row[0], c[row[0]], base[row[0]], ratio, row[1]])
+			rows.append([ratio <= row[1], "size %d against %d: %s %.0f us / %.0f us = %.2f x (at most %.2f)"
+				% [n, n - 2, row[0], c[row[0]], base[row[0]], ratio, row[1]]])
+	return rows
 
 
 ## The slowest chunks the band-1 max row averages.

@@ -1,7 +1,9 @@
 class_name AquaticSim
 extends RefCounted
 ## The Aquatic stage's world (aquatic plan section 8, PROPOSED): one reef-to-deep route, the player's fish, its kin
-## at the nest, the reef grazers, the silver shoal, the lancer and the abyssal drifter, and the feeding sites.
+## at the nest, the species of rules.species (the reef grazers and the silver shoal, ...), the lancer and the abyssal
+## drifter, and the feeding sites. The species are data (aquatic-r2): each one's home, fleeing, hiding, befriending,
+## following, warning, meal and respawn come from its rules entry, in rules.species_order.
 ## Deterministic at 60 ticks a second: durations are whole ticks (converted once here), actors are kept in id order,
 ## and every random draw comes from a stream seeded by the world seed. No scene, clock, input or files: the stage
 ## feeds it an intent per tick and reads its state and events.
@@ -25,6 +27,13 @@ const VERTICAL_RESPONSE := 3.0   ## per second: how fast vertical speed reaches 
 const WALL_START := 36.0
 const WALL_SPAN := 16.0
 const WALL_HEIGHT := 16.0
+## The editor's test swim (trial()): every course starts still here, facing down the route, in open water below the
+## nest, clear of the walls and the shelters and far above every legal rated depth.
+const TRIAL_START := Vector3(0.0, -6.0, 4.0)
+## How long the turn course keeps turning (s), for the editor's drawing of it; turn_1s_rad reads its first second.
+const TRIAL_TURN_S := 3.0
+## The turn course's path is sampled every this many ticks.
+const TRIAL_PATH_EVERY := 6
 
 ## One tick's input. thrust, turn and rise are -1..1; bite, signal and interact are presses on this tick.
 class Intent:
@@ -78,6 +87,15 @@ var _rng_life := RandomNumberGenerator.new()
 var _bite_ready_at := 0
 var _at_shore := false
 var _zone := ""
+## Per station species (rules.species[*].station): whether it tends the fish this tick, whether the fish is in its reach
+## (a visit), and whether this visit has had its "cleaned" event. Per lured species: whether any animal is lured.
+var _tending := {}
+var _visiting := {}
+var _cleaned := {}
+var _lured := {}
+## Resting at the nest (aquatic-r2): whether the fish is within the nest's radius, and whether it heals there this tick.
+var _at_nest := false
+var _nest_resting := false
 
 
 ## A world for `body` (an AquaticBody dictionary) from the rules (aquatic_rules.json) and the world seed.
@@ -95,10 +113,14 @@ func _init(p_rules: Dictionary, p_world_seed: int, body: Dictionary, p_lineage :
 		"disengage": _ticks(hz.lancer.disengage), "lancer_cooldown": _ticks(hz.lancer.cooldown),
 		"drifter_period": _ticks(hz.drifter.period), "drifter_warn": _ticks(hz.drifter.warn),
 		"drifter_cooldown": _ticks(hz.drifter.cooldown),
-		"signal_gap": _ticks(rules.species.grazer.signal_gap),
 	}
 	for kind in w.food:
 		_t["regrow_" + kind] = _ticks(w.food[kind].regrow)
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		_t["respawn_" + species] = _ticks(cfg.get("respawn", w.food.fish.regrow))
+		if cfg.has("signals_to_friend"):
+			_t["signal_gap_" + species] = _ticks(cfg.signal_gap)
 	points = int(p_lineage.get("points", int(rules.editor.start_points)))
 	_place_player(body, int(p_lineage.get("generation", 1)))
 	kin = {"pos": nest_pos() + Vector3(2.5, 0.4, -1.5), "heading": PI * 0.5}
@@ -107,7 +129,7 @@ func _init(p_rules: Dictionary, p_world_seed: int, body: Dictionary, p_lineage :
 	lancer = {"pos": _v(hz.lancer.home), "heading": 0.0, "state": "patrol", "until": 0, "cooldown_until": 0, "angle": 0.0}
 	drifter = {"pos": Vector3.ZERO, "heading": 0.0, "warn_ticks": 0, "cooldown_until": 0}
 	_move_drifter()
-	for species in ["grazer", "shoal"]:
+	for species in rules.species_order:
 		relations[species] = {"standing": "neutral", "rapport": 0, "last_signal": -1000000}
 	var saved: Dictionary = p_lineage.get("aquatic", {})
 	if not saved.is_empty():
@@ -178,6 +200,7 @@ func _clamp_to_water(pos: Vector3) -> Vector3:
 	return pos
 
 
+## The shelter `pos` is in, or "". A sheltered fish is left alone by the lancer and out of the drifter's sweep.
 func sheltered(pos: Vector3) -> String:
 	for s in rules.world.shelters:
 		if pos.distance_to(_v(s.pos)) <= float(s.radius):
@@ -199,7 +222,7 @@ func _build_food() -> void:
 			var a := _rng_food.randf() * TAU
 			var r := sqrt(_rng_food.randf()) * float(site.spread)
 			var p := centre + Vector3(cos(a) * r, (_rng_food.randf() - 0.5) * 3.0, sin(a) * r)
-			if String(site.kind) != "plankton":
+			if not bool(rules.world.food[site.kind].get("floats", false)):
 				p.y = floor_at(p.x, p.z) + 0.6
 			n += 1
 			food.append({"id": "food_%03d" % n, "kind": String(site.kind), "site": String(site.id),
@@ -207,16 +230,20 @@ func _build_food() -> void:
 
 
 func _build_animals() -> void:
-	var sp: Dictionary = rules.species
-	var home_of := {"grazer": _shelter_pos(String(sp.grazer.home)), "shoal": _v(sp.shoal.home)}
-	for species in ["grazer", "shoal"]:
-		var cfg: Dictionary = sp[species]
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		var home := home_of(species)
 		for i in int(cfg.count):
-			var home: Vector3 = home_of[species]
 			var p := _clamp_to_water(home + _wander_offset(float(cfg.wander)))
 			animals.append({"id": "%s_%02d" % [species, i + 1], "species": species, "home": home, "pos": p,
 					"heading": _rng_life.randf() * TAU, "hp": float(cfg.health), "alive": true, "respawn_at": 0,
 					"target": p, "state": "wander"})
+
+
+## A species' home: 3 m above its home shelter, or its position.
+func home_of(species: String) -> Vector3:
+	var cfg: Dictionary = rules.species[species]
+	return _shelter_pos(String(cfg.home)) if cfg.home is String else _v(cfg.home)
 
 
 func _shelter_pos(id: String) -> Vector3:
@@ -239,6 +266,8 @@ func step(intent: Intent) -> void:
 	_swim(intent)
 	_feed()
 	_zones_and_sites()
+	_stations_tick()
+	_nest_tick()
 	_animals_tick()
 	_lancer_tick()
 	_drifter_tick()
@@ -268,7 +297,7 @@ func _swim(intent: Intent) -> void:
 	if starving:
 		thrust *= 0.4
 	var burst := intent.burst and thrust > 0.0 and not starving
-	var power := float(s.accel) * thrust * (float(rules.body.burst.thrust_share) if burst else 1.0)
+	var power := float(s.accel) * thrust * (float(s.burst_share) if burst else 1.0)
 	if thrust < 0.0:
 		power *= 0.35
 	var speed := float(player.speed)
@@ -343,7 +372,7 @@ func _zones_and_sites() -> void:
 				_emit("found", {"id": String(site.id), "name": String(site.name), "points": 0})
 	var at_shore: bool = player.pos.distance_to(_v(rules.world.shore.pos)) <= float(rules.world.shore.radius)
 	if at_shore and not _at_shore:
-		_emit("shore")
+		_emit("shore", {"can_crawl": bool(player.stats.can_crawl)})
 	_at_shore = at_shore
 
 
@@ -351,6 +380,7 @@ func _zones_and_sites() -> void:
 
 func _animals_tick() -> void:
 	var lancer_hunting := String(lancer.state) in ["investigate", "pursue"]
+	var head: Vector3 = player.pos + forward_of(player.heading) * (float(player.stats.length_m) * 0.5 + 0.8)
 	for a in animals:
 		if not a.alive:
 			continue
@@ -359,16 +389,29 @@ func _animals_tick() -> void:
 		var to_player: Vector3 = player.pos - a.pos
 		var speed := float(cfg.speed)
 		var goal: Vector3 = a.target
+		var n := int(String(a.id).right(2))
 		a.state = "wander"
-		if a.species == "grazer" and lancer_hunting and a.pos.distance_to(lancer.pos) < 18.0:
+		if lancer_hunting and cfg.has("hide_from_lancer") and a.pos.distance_to(lancer.pos) < float(cfg.hide_from_lancer):
 			a.state = "hide"
 			goal = a.home
 			speed = float(cfg.flee_speed)
-		elif to_player.length() < float(cfg.flee_reach) and (a.species == "shoal" or rel.standing == "foe"):
+		elif cfg.has("lured") and player.stats.lure and to_player.length() <= float(cfg.lured.reach) \
+				and player.pos.distance_to(a.home) <= float(cfg.lured.leash):
+			# Drawn to the lure that hangs ahead of the fish's head, each to its own side of it.
+			a.state = "lured"
+			var ang := float(n) * 2.4
+			goal = head + Vector3(cos(ang) * 0.9, sin(float(n) * 1.7) * 0.45, sin(ang) * 0.55)
+			speed = float(cfg.lured.speed)
+		elif to_player.length() < float(cfg.flee_reach) and (String(cfg.get("flees", "foe")) == "always" or rel.standing == "foe"):
 			a.state = "flee"
 			goal = a.pos - to_player.normalized() * 6.0
 			speed = float(cfg.flee_speed)
-		elif a.species == "grazer" and rel.standing == "friend" and _zone == "reef" \
+		elif _tending.get(a.species, false):
+			# A cleaning station at work: the animals gather round the resting fish.
+			a.state = "clean"
+			var ang := TAU * float(n) / maxf(1.0, float(cfg.count))
+			goal = player.pos + Vector3(cos(ang), 0.35, sin(ang)) * (float(player.stats.radius) + 0.9)
+		elif cfg.has("follow_leash") and rel.standing == "friend" and _zone == String(cfg.zone) \
 				and player.pos.distance_to(a.home) < float(cfg.follow_leash):
 			a.state = "follow"
 			var side := Vector3(float(int(String(a.id).right(2)) % 3) - 1.0, 0.6, 1.0).normalized() * 3.5
@@ -383,6 +426,68 @@ func _animals_tick() -> void:
 			var stepv := d.normalized() * minf(d.length(), speed * DT)
 			a.pos = _clamp_to_water(a.pos + stepv)
 			a.heading = atan2(-stepv.x, -stepv.z)
+	for species in rules.species_order:
+		if not rules.species[species].has("lured"):
+			continue
+		var any := animals.any(func(x): return x.alive and x.species == species and x.state == "lured")
+		if any and not _lured.get(species, false):
+			_emit("lured", {"species": species, "name": String(rules.species[species].name)})
+		_lured[species] = any
+
+
+## The cleaning stations (rules.species[*].station): a friend resting near the species' home is tended while one of
+## its animals lives, and healed while hurt; the first heal of a visit is a "cleaned" event. A foe is never tended.
+func _stations_tick() -> void:
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		if not cfg.has("station"):
+			continue
+		var st: Dictionary = cfg.station
+		var near: bool = player.pos.distance_to(home_of(species)) <= float(st.reach)
+		if not near:
+			_visiting[species] = false
+			_cleaned[species] = false
+			_tending[species] = false
+			continue
+		_visiting[species] = true
+		var tending: bool = relations[species].standing == "friend" and absf(float(player.speed)) <= float(st.rest_speed) \
+				and animals.any(func(x): return x.alive and x.species == species)
+		_tending[species] = tending
+		if tending and float(player.health) < float(player.stats.max_health):
+			player.health = minf(float(player.stats.max_health), float(player.health) + float(st.heal_per_s) * DT)
+			if not _cleaned.get(species, false):
+				_cleaned[species] = true
+				_emit("cleaned", {"species": species, "name": String(cfg.name)})
+
+
+## Resting at the nest (aquatic-r2, PROPOSED; the nest is home, and in Spore the nest heals): a hurt fish within
+## rules.world.nest.radius of the nest, moving no faster than rest_speed, heals rest_heal_per_s. Rules without
+## rest_heal_per_s (PR #192's slice) never heal there.
+func _nest_tick() -> void:
+	var cfg: Dictionary = rules.world.nest
+	var heal := float(cfg.get("rest_heal_per_s", 0.0))
+	_at_nest = player.pos.distance_to(nest_pos()) <= float(cfg.radius)
+	_nest_resting = _at_nest and heal > 0.0 and absf(float(player.speed)) <= float(cfg.get("rest_speed", 0.0)) \
+			and float(player.health) < float(player.stats.max_health)
+	if _nest_resting:
+		player.health = minf(float(player.stats.max_health), float(player.health) + heal * DT)
+
+
+## The nest, for the HUD: {"heals": whether resting there heals, "resting": whether it heals the fish now}, or {} when
+## the fish is not at the nest.
+func nest_here() -> Dictionary:
+	if not _at_nest:
+		return {}
+	return {"heals": float(rules.world.nest.get("rest_heal_per_s", 0.0)) > 0.0, "resting": _nest_resting}
+
+
+## The cleaning station the fish is at, for the HUD: {"species", "name", "standing", "tending"}, or {} when none.
+func station_here() -> Dictionary:
+	for species in rules.species_order:
+		if _visiting.get(species, false):
+			return {"species": species, "name": String(rules.species[species].name),
+					"standing": String(relations[species].standing), "tending": bool(_tending.get(species, false))}
+	return {}
 
 
 func _lancer_tick() -> void:
@@ -401,8 +506,9 @@ func _lancer_tick() -> void:
 			if tick >= int(lancer.cooldown_until) and dist < float(cfg.notice) and in_territory and not hidden:
 				_set_lancer("investigate", _t.investigate)
 				_emit("lancer_investigate")
-				if _friend_near(float(rules.species.grazer.warn_reach)):
-					_emit("ally_warning")
+				var ally := _ally_near()
+				if ally != "":
+					_emit("ally_warning", {"species": ally, "name": String(rules.species[ally].name)})
 		"investigate":
 			goal = p
 			speed = float(cfg.investigate_speed)
@@ -434,13 +540,17 @@ func _lancer_tick() -> void:
 		lancer.heading = atan2(-stepv.x, -stepv.z)
 
 
-func _friend_near(reach: float) -> bool:
-	if relations.grazer.standing != "friend":
-		return false
-	for a in animals:
-		if a.alive and a.species == "grazer" and a.pos.distance_to(player.pos) < reach:
-			return true
-	return false
+## The first species (in species_order) that is a friend and warns of the lancer with one of its animals within its
+## warn_reach of the fish, or "".
+func _ally_near() -> String:
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		if not cfg.has("warn_reach") or relations[species].standing != "friend":
+			continue
+		for a in animals:
+			if a.alive and a.species == species and a.pos.distance_to(player.pos) < float(cfg.warn_reach):
+				return species
+	return ""
 
 
 func _set_lancer(state: String, ticks: int) -> void:
@@ -477,7 +587,9 @@ func _drifter_tick() -> void:
 		drifter.warn_ticks = int(drifter.warn_ticks) + 1
 	else:
 		drifter.warn_ticks = 0
-	if dist < float(cfg.sweep_reach) and int(drifter.warn_ticks) > int(_t.drifter_warn) and tick >= int(drifter.cooldown_until):
+	# Its warning runs over a sheltered fish too, but the sweep cannot reach into a shelter (aquatic-r2).
+	if dist < float(cfg.sweep_reach) and int(drifter.warn_ticks) > int(_t.drifter_warn) and tick >= int(drifter.cooldown_until) \
+			and sheltered(player.pos) == "":
 		_hurt(float(cfg.sweep_damage), "drifter")
 		var away: Vector3 = (player.pos - drifter.pos)
 		away.y = 0.0
@@ -556,11 +668,12 @@ func _bite() -> void:
 	if best.is_empty():
 		_emit("bite_missed")
 		return
+	var cfg: Dictionary = rules.species[best.species]
 	var rel: Dictionary = relations[best.species]
-	if best.species == "grazer" and rel.standing != "foe":
+	if cfg.has("signals_to_friend") and rel.standing != "foe":
 		rel.standing = "foe"
 		rel.rapport = 0
-		_emit("relation", {"species": "grazer", "standing": "foe"})
+		_emit("relation", {"species": best.species, "name": String(cfg.name), "standing": "foe"})
 	if float(s.bite) <= 0.0:
 		_emit("bite_weak", {"species": best.species})
 		return
@@ -568,36 +681,46 @@ func _bite() -> void:
 	_emit("bit", {"id": best.id, "species": best.species})
 	if float(best.hp) <= 0.0:
 		best.alive = false
-		best.respawn_at = tick + int(_t.regrow_fish)
-		_emit("killed", {"id": best.id, "species": best.species})
+		best.respawn_at = tick + int(_t["respawn_" + String(best.species)])
+		_emit("killed", {"id": best.id, "species": best.species, "name": String(cfg.name), "one": String(cfg.get("one", cfg.name))})
 		if s.eats_meat:
-			_gain_meal(float(rules.world.food.fish.energy), "fish")
+			_gain_meal(float(cfg.get("meal", rules.world.food.fish.energy)), "fish")
 
 
+## A call (Q): heard by the nearest befriendable species (one with signals_to_friend) that has an animal within its
+## signal_reach; spaced calls build its rapport until it is a friend.
 func _signal() -> void:
-	var cfg: Dictionary = rules.species.grazer
-	var rel: Dictionary = relations.grazer
-	var near := false
-	for a in animals:
-		if a.alive and a.species == "grazer" and a.pos.distance_to(player.pos) <= float(cfg.signal_reach):
-			near = true
-			break
-	if not near:
+	var species := ""
+	var nearest := INF
+	for id in rules.species_order:
+		var c: Dictionary = rules.species[id]
+		if not c.has("signals_to_friend"):
+			continue
+		for a in animals:
+			if a.alive and a.species == id:
+				var d: float = a.pos.distance_to(player.pos)
+				if d <= float(c.signal_reach) and d < nearest:
+					species = id
+					nearest = d
+	if species == "":
 		_emit("signal_unheard")
 		return
+	var cfg: Dictionary = rules.species[species]
+	var rel: Dictionary = relations[species]
+	var who := {"species": species, "name": String(cfg.name)}
 	if rel.standing != "neutral":
-		_emit("signal_answered", {"species": "grazer", "standing": rel.standing})
+		_emit("signal_answered", who.merged({"standing": rel.standing}))
 		return
-	if tick - int(rel.last_signal) < int(_t.signal_gap):
-		_emit("signal_too_fast")
+	if tick - int(rel.last_signal) < int(_t["signal_gap_" + species]):
+		_emit("signal_too_fast", who)
 		return
 	rel.last_signal = tick
 	rel.rapport = int(rel.rapport) + 1
-	_emit("signal_answered", {"species": "grazer", "rapport": rel.rapport, "needed": int(cfg.signals_to_friend)})
+	_emit("signal_answered", who.merged({"rapport": rel.rapport, "needed": int(cfg.signals_to_friend)}))
 	if int(rel.rapport) >= int(cfg.signals_to_friend):
 		rel.standing = "friend"
 		points += int(rules.world.points.friend)
-		_emit("relation", {"species": "grazer", "standing": "friend", "points": int(rules.world.points.friend)})
+		_emit("relation", who.merged({"standing": "friend", "points": int(rules.world.points.friend)}))
 
 
 ## Mating (plan section 6): with energy above the mark and the kin in reach, a press opens the editor.
@@ -629,6 +752,62 @@ func apply_offspring(body: Dictionary, cost: int) -> bool:
 	player.energy = float(s.energy_capacity) * float(rules.world.mating.energy_after_share)
 	_emit("generation", {"generation": int(player.generation)})
 	return true
+
+
+## The editor's test swim (aquatic-r2; Bible §12 "a test space", Spore's test drive; the courses are PROPOSED):
+## `body` swims fixed courses in this same sim, on an emptied copy of the route (no food, no animals, a lancer that
+## never notices and a drifter that never comes near), so every number the editor shows is the water's own. Each
+## course starts still at TRIAL_START facing down the route, with the rise held at 0:
+##   dash_1s_m     metres covered (seen from above) in the first second of full thrust with a burst
+##   cruise_10s_m  metres covered in ten seconds of full thrust, no burst
+##   energy_10s    the energy those ten seconds cost (upkeep and swimming)
+##   turn_1s_rad   radians turned in the first second of full thrust and a hard right turn, after 3 s of full thrust
+##   path          the turn course from above, 3 s straight then TRIAL_TURN_S s turning: [x, z] metres from the start
+##                 every TRIAL_PATH_EVERY ticks (the start first), for the editor's drawing
+static func trial(p_rules: Dictionary, body: Dictionary) -> Dictionary:
+	var r: Dictionary = p_rules.duplicate(true)
+	r.world.feeding = []
+	for id in r.species:
+		r.species[id].count = 0
+	r.hazards.lancer.notice = -1.0
+	r.hazards.drifter.warn_reach = -1.0
+	var ahead := Intent.new(1.0, 0.0, 0.0)
+	var dash := Intent.new(1.0, 0.0, 0.0)
+	dash.burst = true
+	var hard := Intent.new(1.0, 1.0, 0.0)
+	var sim := _trial_sim(r, body)
+	for i in TICK_HZ:
+		sim.step(dash)
+	var dash_m := _flat_from_start(sim.player.pos)
+	sim = _trial_sim(r, body)
+	var energy_before := float(sim.player.energy)
+	for i in 10 * TICK_HZ:
+		sim.step(ahead)
+	var cruise_m := _flat_from_start(sim.player.pos)
+	var energy := energy_before - float(sim.player.energy)
+	sim = _trial_sim(r, body)
+	var path := [[0.0, 0.0]]
+	var turned := 0.0
+	var straight_ticks := 3 * TICK_HZ
+	for i in straight_ticks + int(round(TRIAL_TURN_S * TICK_HZ)):
+		var was := float(sim.player.heading)
+		sim.step(hard if i >= straight_ticks else ahead)
+		if i >= straight_ticks and i < straight_ticks + TICK_HZ:
+			turned += absf(wrapf(float(sim.player.heading) - was, -PI, PI))
+		if (i + 1) % TRIAL_PATH_EVERY == 0:
+			path.append([float(sim.player.pos.x) - TRIAL_START.x, float(sim.player.pos.z) - TRIAL_START.z])
+	return {"dash_1s_m": dash_m, "cruise_10s_m": cruise_m, "energy_10s": energy, "turn_1s_rad": turned, "path": path}
+
+
+static func _trial_sim(r: Dictionary, body: Dictionary) -> AquaticSim:
+	var sim := AquaticSim.new(r, 0, body)
+	sim.player.pos = TRIAL_START
+	sim.player.heading = 0.0
+	return sim
+
+
+static func _flat_from_start(pos: Vector3) -> float:
+	return Vector2(pos.x - TRIAL_START.x, pos.z - TRIAL_START.z).length()
 
 
 ## A plain snapshot (vectors as [x, y, z]) for tests and the determinism check.
