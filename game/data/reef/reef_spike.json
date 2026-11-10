@@ -1,0 +1,23 @@
+{
+  "status": "PROPOSED",
+  "note": "Reef spike tuning (backlog U-03; aquatic path addendum sections E and H, M4.5). Every number and name is PROPOSED: change it here, not in code. Cells are 1 m; times are seconds (the sim converts them to whole ticks once at load, 60 ticks a second). The floor (y = 0) is reef rock; the settlement is one air bubble on it.",
+  "grid": [15, 9, 15],
+  "bubble": {"centre": [7, 2, 7], "radius": 7.0},
+  "modules": [
+    {"id": "shelter", "kind": "shelter", "min": [2, 1, 6], "size": [3, 2, 3], "door": [5, 1, 7]},
+    {"id": "vent_hearth", "kind": "hearth", "min": [7, 1, 7], "size": [2, 3, 2], "door": [7, 1, 6]},
+    {"id": "food_pen", "kind": "pen", "min": [9, 4, 3], "size": [3, 2, 3], "door": [8, 5, 4]},
+    {"id": "pen_ledge", "kind": "support", "min": [9, 1, 3], "size": [3, 3, 3], "door": [8, 1, 4]}
+  ],
+  "workers": [
+    {"id": "worker_01", "start": [4, 1, 3]},
+    {"id": "worker_02", "start": [6, 1, 10]},
+    {"id": "worker_03", "start": [10, 1, 9]}
+  ],
+  "move": {"step_s": 0.25},
+  "food": {"start": 4.0, "shortage_below": 8.0, "ok_at": 20.0, "cap": 60.0, "eat_per_worker_per_s": 0.02, "carry": 6.0},
+  "pen": {"start": 18.0, "cap": 40.0, "grow_per_s": 0.03, "tend_s": 6.0, "tend_gain": 5.0},
+  "warmth": {"start": 60.0, "cap": 100.0, "low_below": 40.0, "decay_per_s": 0.08, "stoke_s": 5.0, "stoke_gain": 30.0},
+  "energy": {"start": 100.0, "cap": 100.0, "low_below": 25.0, "drain_per_s": 0.25, "rest_s": 12.0, "rest_gain": 80.0},
+  "stuck_after_s": 90.0
+}
