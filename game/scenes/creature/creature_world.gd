@@ -82,7 +82,7 @@ const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
 ## The friend path's notices (sing and dance, CreatureWorldSim._sing).
 const CHARMED_NOTICE := "You %s for %s: %d / %d"
 ## A wrong display: the creature asked for another one (the copy-the-move mini-game, CreatureWorldSim.DISPLAYS).
-const MISSED_NOTICE := "Not that: %s wanted you to %s"
+const MISSED_NOTICE := "Not that: %s wants you to %s"
 ## The display intents by input action, in CreatureWorldSim.DISPLAYS order.
 const DISPLAY_ACTIONS := {"sing": &"creature_social", "dance": &"creature_dance", "charm": &"creature_charm",
 		"pose": &"creature_pose"}
@@ -256,6 +256,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_stance()
 
 
+## "a angler" as "the angler" (the sim's names carry "a", which reads wrong before a vowel).
+static func _the(creature_name: String) -> String:
+	return "the " + creature_name.trim_prefix("a ")
+
+
 func toggle_stance() -> void:
 	stance = "foe" if stance == "friend" else "friend"
 	if hud != null and hud.has_method("set_stance"):
@@ -338,7 +343,7 @@ func _on_event(e: Dictionary) -> void:
 			notice = String(e["reason"])
 			hud.show_notice(notice)
 		"charmed":
-			notice = CHARMED_NOTICE % [String(e.get("did", "sing")), String(e["name"]), int(e["friendship"]), int(e["needed"])]
+			notice = CHARMED_NOTICE % [String(e.get("did", "sing")), _the(String(e["name"])), int(e["friendship"]), int(e["needed"])]
 			_act(Sim.PLAYER_ID, String(e.get("did", "sing")))
 			_act(String(e["who"]), String(e.get("did", "sing")))   # it joins in
 			hud.show_notice(notice)
@@ -346,7 +351,7 @@ func _on_event(e: Dictionary) -> void:
 			notice = BEFRIENDED_NOTICE % String(e["name"]).capitalize()
 			hud.show_notice(notice)
 		"missed":
-			notice = MISSED_NOTICE % [String(e["name"]).capitalize(), String(e["wanted"])]
+			notice = MISSED_NOTICE % [_the(String(e["name"])), String(e["wanted"])]
 			_act(Sim.PLAYER_ID, String(e["did"]))
 			hud.show_notice(notice)
 		"snubbed":
