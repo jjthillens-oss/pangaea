@@ -222,6 +222,7 @@ func open_aquatic_stage() -> AquaticStage:
 	aquatic_stage.name = "AquaticStage"
 	add_child(aquatic_stage)
 	aquatic_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
+	aquatic_stage.ashore_requested.connect(crawl_out_of_the_sea, CONNECT_DEFERRED)
 	aquatic_stage.setup(session.slot, flags.seed_value if flags.seed_value >= 0 else randi())
 	_set_screen(aquatic_stage)
 	return aquatic_stage
@@ -423,6 +424,29 @@ func _arrive_at_sea() -> void:
 	# The Aquatic stage's arrival card (aquatic plan), once it has one.
 	if aquatic_stage != null and aquatic_stage.has_method(&"show_arrival"):
 		aquatic_stage.call(&"show_arrival", SEA_ARRIVAL_TEXT)
+
+
+## "Crawl onto land" at the Aquatic stage's shore (aquatic plan section 7): the stage has saved; the slot crosses
+## from the sea to land (EraTransition, a .pre-terrestrial checkpoint) with the fish's land body
+## (AquaticLineage.to_creature), and the creature stage opens. A failure says why and the fish stays in the sea.
+func crawl_out_of_the_sea() -> Dictionary:
+	var loaded := session.persistence.load_from(session.slot)
+	if not loaded.ok:
+		_alert("Could not go ashore", loaded.errors)
+		return {"ok": false, "errors": loaded.errors}
+	var save: SaveGame = loaded.save
+	# A lineage that swam in from the title's Aquatic stage preview is still in the cell's era on the slot: it is in
+	# the sea now, so it crosses from there (the checkpoint keeps it in the sea).
+	if save.era == ShoreLink.FROM_ERA:
+		save.era = ShoreLink.TO_ERA
+	var fish: Dictionary = save.aquatic.get("body", aquatic_stage.sim.player.body if aquatic_stage != null else {})
+	var result := EraTransition.cross(save, session.slot, session.persistence,
+			{"creature": AquaticLineage.to_creature(fish, save.genome)})
+	if not result.ok:
+		_alert("Could not go ashore", result.errors)
+		return result
+	arrive_ashore()
+	return result
 
 
 ## The lineage came ashore from the sea (the Aquatic stage's crossing, EraTransition): the creature stage opens with

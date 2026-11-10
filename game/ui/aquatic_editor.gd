@@ -207,6 +207,7 @@ func _build_panel() -> void:
 	_section(panel, "Fins")
 	_step_row(panel, "fins", "Side fins")
 	_step_row(panel, "dorsal", "Back fin and spines")
+	_step_row(panel, "limbs", "Lobe fins (crawl ashore)")
 	_section(panel, "Body")
 	_step_row(panel, "length", "Length")
 	_step_row(panel, "girth", "Depth of body")
@@ -320,7 +321,7 @@ func _step_row(panel: Node, key: String, text: String) -> void:
 ## Moves a number by `delta` inside its range (the buttons; tests call it too).
 func step(key: String, delta: int) -> void:
 	var r: Array = rules.body.ranges[key]
-	body[key] = clampi(int(body[key]) + delta, int(r[0]), int(r[1]))
+	body[key] = clampi(int(body.get(key, 0)) + delta, int(r[0]), int(r[1]))
 	_refresh()
 
 
@@ -334,7 +335,7 @@ func _refresh() -> void:
 	for key in _value_labels:
 		var v: Node = _value_labels[key]
 		if v is Label:
-			(v as Label).text = str(int(body[key]))
+			(v as Label).text = str(int(body.get(key, 0)))
 		else:
 			for b in v.get_children():
 				(b as Button).button_pressed = String(b.name) == "%s_%s" % [key, body[key]]
@@ -351,6 +352,10 @@ func _refresh() -> void:
 			text += "[cell]%s    [/cell][cell]%s      [/cell]" % [row[1],
 					_before_after(float(before[row[0]]), float(after[row[0]]), bool(row[3]), String(row[2]), 1.0)]
 	stats_label.text = text + "[/table]"
+	if bool(after.can_crawl):
+		stats_label.text += "\n[color=#7dff9a]Lobe fins strong enough to crawl ashore[/color]"
+	elif int(after.limbs) > 0:
+		stats_label.text += "\nLobe fins: %d of %d to crawl ashore" % [int(after.limbs), int(rules.body.crawl_limbs)]
 	before_trial = _trial(parent_body)
 	after_trial = _trial(body)
 	text = "[b]Test swim[/b]  [color=#ffffff99](the same water)[/color]\n[table=2]"
