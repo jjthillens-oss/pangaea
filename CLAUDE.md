@@ -35,6 +35,7 @@ python tools/blender/make_m1_threats.py [--only id[,id...]]   # the step 3 threa
 python tools/blender/make_creature_world.py [--only id[,id...]]   # the creature stage's field, nest, fruit bush and meat chunk; then godot --import, --import, godot --import
 python tools/blender/make_aquatic_world.py   # the Aquatic stage's sea floor (from game/data/aquatic/aquatic_rules.json); then godot --import, --import, godot --import
 godot --headless --path . --script res://tools/audio/make_cell_audio.gd [-- --only=id|sfx|ambience|buses]   # the cell-stage effects and ambience; then --import
+python tools/blender/import_patch_reef.py [--only id[,id...]]   # the reef dressing trial from assets/source/third_party/polyfork (CC BY 4.0, CREDITS.md); then godot --import, --map-only, godot --import
 python tools/make_part_rules.py [--check]   # game/data/creature/part_rules.json from the creature part records (the pack carries no records)
 # Tests only: godot --headless --path . --script res://tests/run_tests.gd [-- --skip-slow | -- --only=test_a,test_b]
 ```

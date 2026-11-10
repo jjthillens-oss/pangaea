@@ -1602,3 +1602,22 @@ its slice merges. Impact: no era, save schema or pipeline change; each slice fol
 Joshua in the project chat, 06:03 UTC: "Let's ship it all to main right now, just to get caught up." PR #223 is merged on that instruction: aquatic round 2, the sea's shore crossing (lobe fins, "Crawl onto land", the `.pre-terrestrial` checkpoint), the `shore_piece` asset for the pool's sea edge, the continuity test and smoke, and the first reef settlement rules in `game/domain/reef/` (backlog U-03; not wired into the game).
 
 The PR adds one optional whole-number key to the saved fish body, `limbs` (0 to 2, read as 0 when missing; the schema version stays 5). He was asked about that key on a decision card at 05:55 UTC and did not tap it; the builder read "ship it all" as covering it. That is the builder's reading, not a separate approval, so the key, its numbers and the looks stay PROPOSED until he confirms them, and the key can be taken out again without a migration (a body without it is legal).
+
+## 2026-11-10 · Outside scenery meshes: reef trial (PROPOSED, awaiting the owner's look review)
+Joshua installed Patch (patch.gg), whose asset library holds about 59,000 CC0 and CC BY 4.0 assets, and said
+(2026-11-10 06:07 UTC) he wants it "just for things that aren't the main game": background, atmosphere and plants,
+never animals, because every creature must look like something the editor can build. This trial brings twelve
+reef props (corals, sponges, sea plants, a boulder and a bubble vent) by Polyfork into the Aquatic stage through
+`tools/blender/import_patch_reef.py`, each with a `.blend`, a GLB and a record, placed by `_dress_reef_trial()` in
+`game/scenes/aquatic/aquatic_world.gd` (`REEF_TRIAL_COUNT := 0` turns it off). What it changes, if accepted:
+- **Pipeline.** These are the first production meshes not authored by our own Blender scripts (art direction
+  section 8 asks the owner's approval for downloaded meshes). Polyfork describes its models as generated from code
+  ("AI-native 3D assets made with code"); Patch lists them as not AI-generated. The script changes no shape or colour.
+- **Licence.** CC BY 4.0, not CC0, so the 2026-10-22 "CC0 by default" rule does not cover them. Each is credited in
+  `CREDITS.md` and its record, and the unchanged files and licence text are kept in
+  `assets/source/third_party/polyfork/`. A public build must show the credits to players; no credits screen exists yet.
+- **Look.** Flat-shaded and vertex-coloured, with no baked textures, so they sit below the production bar the other
+  dressing follows (they carry their own review state and are outside `test_production_assets_*`). Whether they
+  fit beside the lattice landmarks is the owner's call from the before and after shots in the PR.
+- **Not changed.** No animal, creature part, sim rule, save field or dependency. Patch itself is not a dependency:
+  nothing in the repo calls it, and nothing of Pangaea was uploaded to it.
