@@ -1,0 +1,79 @@
+{
+  "id": "creature_pebble_cluster",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature world ground cover (PROPOSED): a patch of seven half-sunk, rounded pebbles of 3 to 12 cm in warm grey.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_pebble_cluster.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_pebble_cluster.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.375,
+    "y_forward": 0.225,
+    "z_up": 0.048
+  },
+  "triangles": 157,
+  "triangle_budget": 160,
+  "textures": [
+    {
+      "name": "T_CreaturePebbleCluster_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_CreaturePebbleCluster_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreaturePebbleCluster_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Pebble"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "PebbleCluster"
+  ],
+  "kind": "rock_cover",
+  "pivot": "the patch's centre on the ground (Godot y = 0)",
+  "placement": "walk-through cover: under 0.45 m, so it may lie anywhere inside the walls outside the nest's 8 m clearing, thicker on the bare earth patches",
+  "pebbles_m": [
+    0.12,
+    0.09,
+    0.075,
+    0.06,
+    0.05,
+    0.04,
+    0.03
+  ],
+  "reduction": {
+    "method": "Blender collapse decimation to the triangle budget; the full-detail shape and shader relief baked to the normal map",
+    "triangles_before": 1483,
+    "triangles_after": 157,
+    "surface_error_m": 0.0065
+  },
+  "provenance": "Authored procedurally by tools/blender/creature_flora.py (through make_creature_world.py); no external or generated meshes. Textures baked in Blender from procedural shaders; no scans."
+}

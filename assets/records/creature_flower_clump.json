@@ -1,0 +1,61 @@
+{
+  "id": "creature_flower_clump",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature world ground cover (PROPOSED): a wildflower clump, leaf cards at its foot and sprig cards of lilac bells and sky-blue and cream star heads (T_MeadowCards).",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_flower_clump.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_flower_clump.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.336,
+    "y_forward": 0.356,
+    "z_up": 0.388
+  },
+  "triangles": 72,
+  "triangle_budget": 120,
+  "textures": [
+    {
+      "name": "T_MeadowCards",
+      "path": "assets/export/creature_flora/T_MeadowCards.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "RGB the authored colour (CIE LCh greens at hue 139 or more; lilac, sky blue and cream flowers) in a 4 x 4 grid of 256 px cells: 0 grass meadow; 1 grass tall; 2 grass short; 3 grass sage; 4 sedge; 5 grass fine; 6 fern broad; 7 fern narrow; 8 lilac bells; 9 blue and cream stars; 10 cream umbels; 11 blue bells; 12 leaf rosette; 13 fern young; 14 clover; 15 grass and lilac stars; A the cut-out mask (alpha scissor at 0.5)"
+    }
+  ],
+  "materials": [
+    "M_MeadowCards"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "FlowerClump"
+  ],
+  "kind": "flora_cover",
+  "pivot": "the clump's centre on the ground (Godot y = 0); card bottoms sink about 2 cm so the roots meet the ground on gentle relief",
+  "external_material": "res://assets/export/M_MeadowCards.tres",
+  "placement": "walk-through cover: under 0.45 m, so it may stand anywhere inside the walls outside the nest's 8 m clearing (tests/test_creature_world_art.gd)",
+  "cards": {
+    "count": 9,
+    "atlas": "assets/export/creature_flora/T_MeadowCards.png",
+    "material": "M_MeadowCards (StandardMaterial3D: alpha scissor 0.5, back faces culled, COLOR_0 jitter)",
+    "sides": "two sheets back to back per card, opposite winding",
+    "normals": "each sheet's face normal plus 1.4 x world up, so both sides light like the ground"
+  },
+  "height_m": 0.359,
+  "flowers": [
+    "lilac bells (LCh hue 300-308)",
+    "sky blue star heads (hue 264-271) and bells (hue 262-268)",
+    "cream star heads and umbels (hue 80-86), the stars with a dark violet eye"
+  ],
+  "provenance": "Authored procedurally by tools/blender/creature_flora.py (through make_creature_world.py); no external or generated meshes. The card atlas is painted in numpy (strokes in CIE LCh); no scans."
+}

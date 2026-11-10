@@ -1,0 +1,98 @@
+{
+  "id": "creature_tree_umbrella",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature world tree (PROPOSED, original): an umbrella tree about 7.6 m tall with a bulbous, buttressed trunk and a broad layered umbrella crown of leaf-spray cards.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_tree_umbrella.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_tree_umbrella.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 7.79,
+    "y_forward": 7.538,
+    "z_up": 7.765
+  },
+  "triangles": 2168,
+  "triangle_budget": 3000,
+  "textures": [
+    {
+      "name": "T_CreatureTreeUmbrella_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_CreatureTreeUmbrella_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreatureTreeUmbrella_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    },
+    {
+      "name": "T_TreeCanopyCards",
+      "path": "assets/export/creature_flora/T_TreeCanopyCards.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "RGB the authored colour (CIE LCh greens and turquoise at hue 155 to 176, stems a low-chroma brown) in a 2 x 2 grid of 512 px cells: 0 umbrella spray; 1 umbrella spray fine; 2 lantern curtain; 3 lantern cap; A the cut-out mask (alpha scissor at 0.5)"
+    }
+  ],
+  "materials": [
+    "M_CreatureTreeUmbrella",
+    "M_TreeCanopyCards"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "UmbrellaCanopy",
+    "UmbrellaTree"
+  ],
+  "kind": "tree",
+  "pivot": "the trunk's foot on the ground (Godot y = 0); the roots sink about 10 cm so the tree sits into a slope",
+  "placement": "an obstacle: OUTSIDE the walls only (the berm and the hills, where max(|x|, |z|) is 80.5 m or more, crown included) until the sim has obstacles (issue #210); tests/test_creature_world_art.gd keeps anything over 0.45 m out of the walkable field",
+  "height_m": 7.64,
+  "crown_reach_m": 4.13,
+  "wood": {
+    "node": "UmbrellaTree",
+    "triangles": 984,
+    "lods": "Godot's generated LODs"
+  },
+  "canopy": {
+    "node": "UmbrellaCanopy",
+    "cards": 148,
+    "atlas": "assets/export/creature_flora/T_TreeCanopyCards.png",
+    "material": "M_TreeCanopyCards (StandardMaterial3D: alpha scissor 0.5, back faces culled, COLOR_0 jitter)",
+    "sides": "two sheets back to back per card, opposite winding",
+    "normals": "out of the crown's ellipsoid plus 0.45 x world up on both sheets, so the crown shades as one rounded volume",
+    "lods": "none (Godot's LOD pass collapses whole cards)"
+  },
+  "reduction": {
+    "method": "Blender collapse decimation to the triangle budget; the full-detail shape and shader relief baked to the normal map",
+    "triangles_before": 53184,
+    "triangles_after": 984,
+    "surface_error_m": 0.0438
+  },
+  "provenance": "Authored procedurally by tools/blender/creature_flora.py (through make_creature_world.py); no external or generated meshes. The wood is a skin-modifier skeleton baked in Blender from procedural shaders; the canopy card atlas is painted in numpy (strokes in CIE LCh); no scans."
+}
