@@ -7,6 +7,9 @@ extends RefCounted
 
 const RULES_PATH := "res://game/data/aquatic/aquatic_rules.json"
 const SPECIES_PATH := "res://game/data/creatures_m1.json"
+## The lineage event a crawl-capable fish writes when it turns the shore down (plan section 7a): later eras read
+## the last of this and ShoreLink's "came_ashore" to tell which path the lineage is on.
+const STAYED_EVENT := "stayed_in_the_sea"
 
 
 static func rules(path := RULES_PATH) -> Dictionary:
@@ -77,7 +80,64 @@ static func write(slot_path: String, lineage: Dictionary, sim: AquaticSim) -> Er
 		return ERR_INVALID_PARAMETER
 	save.aquatic = sim.to_save()
 	save.adaptation_points = sim.points
+	if bool(lineage.get("stayed", false)) and last_path_event(save) != STAYED_EVENT:
+		save.lineage_history.append({"generation": save.genome.generation, "genome_id": save.genome.genome_id,
+				"event": STAYED_EVENT})
 	return service.save_to(slot_path, save)
+
+
+## The last path event in the lineage's history ("stayed_in_the_sea", "came_ashore"), or "" for none.
+static func last_path_event(save: SaveGame) -> String:
+	for i in range(save.lineage_history.size() - 1, -1, -1):
+		var e: Variant = save.lineage_history[i]
+		if e is Dictionary and String(e.get("event", "")) in [STAYED_EVENT, String(ShoreLink.link("aquatic").get("event", "came_ashore"))]:
+			return String(e.event)
+	return ""
+
+
+## The first land creature of a fish that crawls ashore (plan section 7): the creature stage's four-legged starter
+## (its legs are the lobe fins), longer with the fish's length and stouter with its girth, with the fish's mouth, its
+## back fin when it had one, its tail fin and side fins, and its colour; CreatureRules.ashore keeps the skin rule in
+## one place.
+static func to_creature(body: Dictionary, genome: Genome) -> Dictionary:
+	var creature := CreatureRules.new_creature()
+	var cbody: Dictionary = creature["body"]
+	cbody["reference_length_mm"] = 900 + 150 * int(body.get("length", 2))
+	var stout := 0.85 + 0.15 * float(body.get("girth", 1))
+	for v in cbody.get("vertebrae", []):
+		v["r"] = int(round(float(v.r) * stout))
+	var mouth := "maw" if String(body.get("mouth", "both")) == "filter" else "jaw"
+	var parts: Array = []
+	for part in cbody.get("parts", []):
+		match String(part.type):
+			"beak":
+				part["type"] = mouth
+				parts.append(part)
+			"horn":
+				pass
+			"fin":
+				if int(body.get("dorsal", 0)) > 0:
+					parts.append(part)
+			_:
+				parts.append(part)
+	# The swimming parts come ashore too (Joshua, 2026-10-25 05:43: traits matter both ways): the tail fin, and the
+	# side fins when the fish had them. On land they are the creature stage's to weigh (a swimmer's parts slow a
+	# walker); the creature editor can trade them away.
+	var next: Dictionary = cbody.get("next", {})
+	var fish_parts := [{"type": "tail_fluke", "u": 1000, "ring": 0, "scale": 500 + 120 * int(body.get("tail_size", 1)),
+			"handles": [], "mirror": false}]
+	if int(body.get("fins", 0)) > 0:
+		fish_parts.append({"type": "fin", "u": 300, "ring": 250, "scale": 350 + 150 * int(body.fins), "handles": [0, 0, 0],
+				"mirror": true})
+	for fp in fish_parts:
+		var n := int(next.get("p", parts.size() + 1))
+		next["p"] = n + 1
+		parts.append({"id": "p_%d" % n, "type": fp.type, "host": "spine", "u": fp.u, "ring": fp.ring, "elev": 0, "height": 0,
+				"turn": 0, "tilt": 0, "roll": 0, "scale": fp.scale, "handles": fp.handles, "mirror": fp.mirror})
+	cbody["next"] = next
+	cbody["parts"] = parts
+	cbody[CreatureRules.SKIN_COLOR_KEY] = "#" + CreatureRules.cell_skin(float(body.get("hue", 0.55))).to_html(false)
+	return CreatureRules.ashore(creature, genome)
 
 
 ## The cell stage's species, by name, as the entry card remembers them: the microscopic world is history, not
