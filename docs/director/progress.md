@@ -21,3 +21,6 @@ one-line summary each.
   (cell to sea, reviewed against the shore smokes). Tier 2 batch of 6 and Tier 3 cards (creature hunger #206, aquatic
   addendum decisions 2 to 5, IB-30 to IB-33) sent to the owner. Tuesday 27 Oct ultracode jobs proposed: creature world
   look pass, aquatic look pass, D-02 capture plus M4-03 continuity save. Usage about 4% of the week.
+- 2026-11-05 00:50 studio stalled from 2026-10-26 to now: the weekly usage limit was hit on 26 Oct (resets were missed
+  while sessions waited), so the 26 to 28 Oct captures, the 27 Oct ultracode day and the daily plans did not run; main
+  has not moved since 8bda34a. The owner chose all four of IB-30 to IB-33 (28 Oct); added to the backlog, R-01 passes.

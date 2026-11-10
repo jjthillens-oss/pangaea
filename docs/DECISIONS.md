@@ -1589,3 +1589,10 @@ Joshua: "we want to make sure that you level up out of the spore world, the orig
 ## 2026-10-25: band-1 chunk cost max row averages the slowest 5 chunks (Joshua)
 
 test_world_gen's band-1 vs band-0 cold chunk cost check compared the single slowest chunk per size, which read 0.9x to 1.5x on the same tree (one chunk's time is runner noise) and turned main red after #189. Joshua chose (decision card, 05:27 UTC) to compare the mean of the 5 slowest chunks at each size instead, still against 1.35x. The median and p90 rows (1.20x) and the absolute limits are unchanged.
+
+## 2026-10-28 · Innovation items IB-30 to IB-33 enter the build backlog (CONFIRMED scope; content PROPOSED)
+The owner chose "All four now" on the studio's decision card (2026-10-28 01:57 UTC). Body scale range (IB-30), graceful
+sharing (IB-31), authored terrain variety (IB-32) and colour freedom in the editor (IB-33), from the Spore mod research
+(`docs/research/mod-wishes.md`, `docs/research/innovation-backlog.md`), are now backlog features in
+`docs/director/backlog.json`. IB-32's runtime placement boundary (Bible §15) still needs the owner's approval before
+its slice merges. Impact: no era, save schema or pipeline change; each slice follows its owner's usual tier.
